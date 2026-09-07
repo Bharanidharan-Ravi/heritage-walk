@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npm run *)",
+      "Bash(npm ci)",
+      "Bash(pnpm install)",
+      "Bash(pnpm dev)",
+      "Bash(pnpm build)",
+      "Bash(dotnet build*)",
+      "Bash(dotnet run*)",
+      "Bash(dotnet restore*)",
+      "Bash(dotnet ef *)",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Read(//d/Project/heritageApp/**)"
+    ],
+    "deny": [
+      "Read(//d/Project/heritageApp/**/appsettings.Production.json)",
+      "Read(//d/Project/heritageApp/**/.env)",
+      "Read(//d/Project/heritageApp/**/.env.*)",
+      "Bash(git push*)",
+      "Bash(git reset --hard*)"
+    ]
+  }
+}

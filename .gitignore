@@ -16,6 +16,7 @@ dist-ssr
 .vscode/*
 !.vscode/extensions.json
 .idea
+.vs/
 .DS_Store
 *.suo
 *.ntvs*
@@ -23,3 +24,16 @@ dist-ssr
 *.sln
 *.sw?
 .env
+.env.*
+!.env.example
+
+# .NET (hertiagewalkApi/)
+**/bin/
+**/obj/
+*.user
+appsettings.Development.json
+appsettings.Local.json
+*.nupkg
+
+# Sanity Studio (hertiagewalk-backend/)
+**/.sanity/

@@ -1,0 +1,6 @@
+@ArchaeoTrails.Api_HostAddress = http://localhost:5078
+
+GET {{ArchaeoTrails.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build / editor / VCS output
+dist/
+build/
+.vs/
+.vscode/
+.idea/
+
+# .NET build output (per-project bin/obj under hertiagewalkApi/*)
+bin/
+obj/
+**/bin/
+**/obj/
+
+# Lockfiles (large, rarely useful to read in full)
+package-lock.json
+pnpm-lock.yaml
+**/pnpm-lock.yaml
+
+# Logs / env / secrets
+*.log
+npm-debug.log*
+.env
+.env.*
+!.env.example
+**/appsettings.*.json
+!**/appsettings.json
+
+# Misc caches
+.cache/
+*.tsbuildinfo
