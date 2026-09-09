@@ -70,4 +70,35 @@ namespace ArchaeoTrails.Application.Features.Forms
         public Guid? SubmissionId { get; set; }
         public string? Message { get; set; }
     }
+
+    // ---- Admin/Employee: dashboard views ----------------------------------------
+
+    public class AdminFormListItemDto
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string Slug { get; set; } = string.Empty;
+        public decimal Price { get; set; }
+        public string Currency { get; set; } = "INR";
+        public bool IsActive { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public int SubmissionCount { get; set; }
+    }
+
+    public class UpdateFormStatusRequest
+    {
+        public bool IsActive { get; set; }
+    }
+
+    public class AdminFormSubmissionDto
+    {
+        public Guid Id { get; set; }
+        public Dictionary<string, string> FormData { get; set; } = new();
+        public string? SubmitterName { get; set; }
+        public string? SubmitterEmail { get; set; }
+        public decimal AmountPaid { get; set; }
+        public string Currency { get; set; } = "INR";
+        public string Status { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+    }
 }

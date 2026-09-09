@@ -1,24 +1,24 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using ArchaeoTrails.Application.Features.Forms;
 using ArchaeoTrails.Application.Interfaces;
+using ArchaeoTrails.Domain.Constants;
 using ArchaeoTrails.Domain.Entities;
 using ArchaeoTrails.Domain.Enums;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 
 namespace ArchaeoTrails.Api.Controllers
 {
     /// <summary>
-    /// DRY / SKELETON controller for the pay-to-submit form generator.
-    /// See docs/form-generator/MASTER_PROMPT.md for the full spec and what's
-    /// still stubbed (Razorpay + QR generation are fake until their NuGet
-    /// packages + keys are added).
-    ///
-    /// TODO(form-generator): POST /api/forms has no auth check — do not deploy
-    /// this route publicly until an admin auth story exists.
+    /// Pay-to-submit form generator, plus admin/employee-only management
+    /// endpoints. See docs/form-generator/MASTER_PROMPT.md for the full spec
+    /// and what's still stubbed (Razorpay + QR generation are fake until
+    /// their NuGet packages + keys are added).
     /// </summary>
     [ApiController]
     [Route("api/forms")]
@@ -47,8 +47,9 @@ namespace ArchaeoTrails.Api.Controllers
             _configuration = configuration;
         }
 
-        // POST /api/forms  (admin — TODO: add auth)
+        // POST /api/forms  (Admin/Employee only)
         [HttpPost]
+        [Authorize(Roles = Roles.StaffPolicy)]
         public async Task<IActionResult> CreateForm([FromBody] CreateFormTemplateRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.Title) || request.Fields.Count == 0)
@@ -169,6 +170,71 @@ namespace ArchaeoTrails.Api.Controllers
             _ = Task.Run(() => _emailService.SendFormSubmissionConfirmationEmailAsync(template, submission));
 
             return Ok(new SubmitFormResponse { Success = true, SubmissionId = submission.Id });
+        }
+
+        // GET /api/forms  (Admin/Employee only) — every template incl. inactive.
+        [HttpGet]
+        [Authorize(Roles = Roles.StaffPolicy)]
+        public async Task<IActionResult> ListForms()
+        {
+            var templates = await _formTemplateRepository.GetAllAsync();
+            var result = new List<AdminFormListItemDto>(templates.Count);
+
+            foreach (var template in templates)
+            {
+                var submissions = await _formSubmissionRepository.GetByTemplateIdAsync(template.Id);
+                result.Add(new AdminFormListItemDto
+                {
+                    Id = template.Id,
+                    Title = template.Title,
+                    Slug = template.Slug,
+                    Price = template.Price,
+                    Currency = template.Currency,
+                    IsActive = template.IsActive,
+                    CreatedAt = template.CreatedAt,
+                    SubmissionCount = submissions.Count
+                });
+            }
+
+            return Ok(result);
+        }
+
+        // PUT /api/forms/{id}/status  (Admin/Employee only) — activate/deactivate a form.
+        [HttpPut("{id:guid}/status")]
+        [Authorize(Roles = Roles.StaffPolicy)]
+        public async Task<IActionResult> UpdateFormStatus(Guid id, [FromBody] UpdateFormStatusRequest request)
+        {
+            var template = await _formTemplateRepository.GetByIdAsync(id);
+            if (template is null) return NotFound();
+
+            template.IsActive = request.IsActive;
+            await _formTemplateRepository.UpdateAsync(template);
+
+            return Ok(new { status = "success" });
+        }
+
+        // GET /api/forms/{id}/submissions  (Admin/Employee only)
+        [HttpGet("{id:guid}/submissions")]
+        [Authorize(Roles = Roles.StaffPolicy)]
+        public async Task<IActionResult> ListSubmissions(Guid id)
+        {
+            var template = await _formTemplateRepository.GetByIdAsync(id);
+            if (template is null) return NotFound();
+
+            var submissions = await _formSubmissionRepository.GetByTemplateIdAsync(id);
+            var result = submissions.Select(s => new AdminFormSubmissionDto
+            {
+                Id = s.Id,
+                FormData = JsonSerializer.Deserialize<Dictionary<string, string>>(s.DataJson) ?? new(),
+                SubmitterName = s.SubmitterName,
+                SubmitterEmail = s.SubmitterEmail,
+                AmountPaid = s.AmountPaid,
+                Currency = s.Currency,
+                Status = s.Status.ToString(),
+                CreatedAt = s.CreatedAt
+            });
+
+            return Ok(result);
         }
 
         private static string Slugify(string title) =>

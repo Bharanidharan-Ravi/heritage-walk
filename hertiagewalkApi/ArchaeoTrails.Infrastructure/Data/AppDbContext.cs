@@ -1,13 +1,22 @@
+using System;
 using ArchaeoTrails.Domain.Entities;
-using Microsoft.EntityFrameworkCore; // TODO(form-generator): requires Microsoft.EntityFrameworkCore.SqlServer + .Design — see MASTER_PROMPT.md §7
+using ArchaeoTrails.Infrastructure.Identity;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 
 namespace ArchaeoTrails.Infrastructure.Data
 {
     /// <summary>
-    /// EF Core context targeting Azure SQL Database. Does not compile until
-    /// the EF Core NuGet packages are added to ArchaeoTrails.Infrastructure.csproj.
+    /// EF Core context targeting Azure SQL Database via the passwordless
+    /// (Active Directory Default) connection string in ConnectionStrings:AzureSql.
+    ///
+    /// Extends IdentityDbContext to add the admin-panel login/roles tables
+    /// (AspNetUsers, AspNetRoles, ...) alongside the existing form-generator
+    /// tables. See docs/form-generator/MASTER_PROMPT.md for FormTemplate/
+    /// FormSubmission and CLAUDE.md for the admin panel.
     /// </summary>
-    public class AppDbContext : DbContext
+    public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>
     {
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -16,6 +25,14 @@ namespace ArchaeoTrails.Infrastructure.Data
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            // Required first — sets up the AspNetUsers/AspNetRoles/... tables.
+            base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<ApplicationUser>(entity =>
+            {
+                entity.Property(u => u.FullName).HasMaxLength(200);
+            });
+
             modelBuilder.Entity<FormTemplate>(entity =>
             {
                 entity.HasIndex(t => t.Slug).IsUnique();

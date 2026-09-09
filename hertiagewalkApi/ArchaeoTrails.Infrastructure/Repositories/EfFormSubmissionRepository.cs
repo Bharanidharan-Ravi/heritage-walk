@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using ArchaeoTrails.Application.Interfaces;
 using ArchaeoTrails.Domain.Entities;
@@ -30,5 +33,11 @@ namespace ArchaeoTrails.Infrastructure.Repositories
             _db.FormSubmissions.Update(submission);
             await _db.SaveChangesAsync();
         }
+
+        public async Task<IReadOnlyList<FormSubmission>> GetByTemplateIdAsync(Guid formTemplateId) =>
+            await _db.FormSubmissions
+                .Where(s => s.FormTemplateId == formTemplateId)
+                .OrderByDescending(s => s.CreatedAt)
+                .ToListAsync();
     }
 }
