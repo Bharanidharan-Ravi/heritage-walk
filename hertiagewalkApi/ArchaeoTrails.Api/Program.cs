@@ -18,7 +18,28 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    // Adds the "Authorize" button in Swagger UI so protected endpoints
+    // (e.g. [Authorize(Roles = Roles.Admin)] on UsersController) can be
+    // tested: POST /api/auth/login to get a token, then Authorize with
+    // "Bearer <token>". Without this, Swagger has no way to attach a
+    // token and every protected route correctly returns 401.
+    var jwtScheme = new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Description = "Paste the raw JWT from POST /api/auth/login (no need to type \"Bearer \" — Swagger adds it)."
+    };
+    options.AddSecurityDefinition("Bearer", jwtScheme);
+    options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        { new Microsoft.OpenApi.Models.OpenApiSecurityScheme { Reference = new Microsoft.OpenApi.Models.OpenApiReference { Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme, Id = "Bearer" } }, Array.Empty<string>() }
+    });
+});
 builder.Services.AddScoped<IEmailService, ZohoEmailService>();
 
 // --- Form Generator (dry scaffold) ---------------------------------------
@@ -35,9 +56,18 @@ builder.Services.AddScoped<IPaymentService, RazorpayPaymentService>();
 builder.Services.AddScoped<IQrCodeService, QrCodeService>();
 
 // --- Admin panel: Identity (Admin/Employee/User roles) + JWT auth --------
-// TODO(admin-panel): Jwt:Key and SeedAdmin:Email/Password are placeholder-only
-// in appsettings.json — set real values via `dotnet user-secrets` (dev) or
-// Azure App Service configuration (prod). See CLAUDE.md.
+// Jwt:* / SeedAdmin:* are placeholder-only ("REPLACE_ME") in appsettings.json.
+// Real values come from:
+//   - Development: `dotnet user-secrets` against ArchaeoTrails.Api's
+//     UserSecretsId — never committed (secrets.json lives outside the repo).
+//   - Production: the archaeotrails-api Azure App Service's Application
+//     Settings, using the double-underscore env-var form (Jwt__Key,
+//     Jwt__Issuer, Jwt__Audience, Jwt__ExpiryMinutes, SeedAdmin__Email,
+//     SeedAdmin__Password) — ASP.NET Core's config binder maps "__" to ":"
+//     automatically, so no code change is needed to read them there.
+// This is a separate trust boundary from Microsoft Entra: there is no Entra
+// App Registration involved in this JWT scheme. Entra Managed Identity is
+// used only for the "Active Directory Default" Azure SQL connection below.
 builder.Services
     .AddIdentityCore<ApplicationUser>(options =>
     {
@@ -48,7 +78,18 @@ builder.Services
     .AddRoles<IdentityRole<Guid>>()
     .AddEntityFrameworkStores<AppDbContext>();
 
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "REPLACE_ME_INSECURE_DEV_ONLY_KEY_1234567890";
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey == "REPLACE_ME")
+{
+    // Fail fast rather than ever falling back to a predictable/hardcoded key.
+    throw new InvalidOperationException(
+        "Jwt:Key is not configured. In Development, run " +
+        "`dotnet user-secrets set \"Jwt:Key\" \"<64+ random bytes, base64>\"` " +
+        "from ArchaeoTrails.Api. In Production, set the Jwt__Key Application " +
+        "Setting on the archaeotrails-api App Service. Refusing to start with " +
+        "an unset/placeholder signing key.");
+}
+
 builder.Services
     .AddAuthentication(options =>
     {

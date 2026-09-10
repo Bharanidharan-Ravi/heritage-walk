@@ -21,7 +21,6 @@ import AdminUsers from './Component/pages/admin/AdminUsers';
 import AdminForms from './Component/pages/admin/AdminForms';
 import AdminFormSubmissions from './Component/pages/admin/AdminFormSubmissions';
 import { adminConfig } from './Component/Config/admin.config';
-import TempleView from './Component/Sections/TempleView'; // drag-to-pan / scroll-to-zoom Big Temple viewer
 
 // You can create basic placeholder components for these to avoid errors
 const Services = () => <div className="p-20 text-center text-2xl">Services Page Coming Soon</div>;
@@ -43,7 +42,6 @@ function App() {
         <Route path="/blog/:slug" element={<BlogPost />} />
         <Route path="/blog" element={<BlogList />} />
         <Route path="/forms/:slug" element={<FormPage />} />
-        <Route path="/big-temple-view" element={<TempleView />} />
            {/* <Route path="/blogs/:slug" element={<BlogPost2 />} />
         <Route path="/blogs" element={<BlogList2 />} /> */}
       </Route>
