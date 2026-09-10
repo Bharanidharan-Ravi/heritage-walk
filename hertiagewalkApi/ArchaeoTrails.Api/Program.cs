@@ -62,8 +62,8 @@ builder.Services.AddScoped<IQrCodeService, QrCodeService>();
 //     UserSecretsId — never committed (secrets.json lives outside the repo).
 //   - Production: the archaeotrails-api Azure App Service's Application
 //     Settings, using the double-underscore env-var form (Jwt__Key,
-//     Jwt__Issuer, Jwt__Audience, Jwt__ExpiryMinutes, SeedAdmin__Email,
-//     SeedAdmin__Password) — ASP.NET Core's config binder maps "__" to ":"
+//     Jwt__Issuer, Jwt__Audience, Jwt__ExpiryMinutes, SeedAdmin__UserName,
+//     SeedAdmin__Email, SeedAdmin__Password) — the config binder maps "__" to ":"
 //     automatically, so no code change is needed to read them there.
 // This is a separate trust boundary from Microsoft Entra: there is no Entra
 // App Registration involved in this JWT scheme. Entra Managed Identity is
@@ -74,9 +74,22 @@ builder.Services
         options.Password.RequiredLength = 8;
         options.Password.RequireNonAlphanumeric = false;
         options.User.RequireUniqueEmail = true;
+        // Usernames are Admin-entered handles, separate from the email.
+        // Deliberately WIDER than Domain.Constants.UserNameRules (which is what
+        // new/renamed usernames are validated against): accounts provisioned
+        // before usernames existed still carry their email address as the
+        // username, and Identity re-validates the username on every
+        // UpdateAsync — so "@" and "+" must stay legal here or a simple
+        // activate/deactivate on such a legacy account would fail. Rename
+        // those accounts from Users & Roles to move them onto the new rules.
+        options.User.AllowedUserNameCharacters =
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-@+";
     })
     .AddRoles<IdentityRole<Guid>>()
-    .AddEntityFrameworkStores<AppDbContext>();
+    .AddEntityFrameworkStores<AppDbContext>()
+    // Required by UserManagementService's admin password reset, which uses
+    // GeneratePasswordResetTokenAsync so the old password isn't needed.
+    .AddDefaultTokenProviders();
 
 var jwtKey = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey == "REPLACE_ME")

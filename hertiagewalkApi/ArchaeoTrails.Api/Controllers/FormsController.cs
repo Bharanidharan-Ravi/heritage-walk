@@ -57,14 +57,21 @@ namespace ArchaeoTrails.Api.Controllers
                 return BadRequest(new { status = "error", message = "Title and at least one field are required." });
             }
 
+            if (request.RequiresPayment && request.Price <= 0)
+            {
+                return BadRequest(new { status = "error", message = "A paid form needs a price above zero." });
+            }
+
             var slug = Slugify(request.Title) + "-" + Guid.NewGuid().ToString("N")[..6];
 
             var template = new FormTemplate
             {
                 Title = request.Title,
+                Description = request.Description,
                 Slug = slug,
                 FieldsJson = JsonSerializer.Serialize(request.Fields),
-                Price = request.Price,
+                RequiresPayment = request.RequiresPayment,
+                Price = request.RequiresPayment ? request.Price : 0m,
                 Currency = request.Currency
             };
 
@@ -78,13 +85,15 @@ namespace ArchaeoTrails.Api.Controllers
         public async Task<IActionResult> GetForm(string slug)
         {
             var template = await _formTemplateRepository.GetBySlugAsync(slug);
-            if (template is null) return NotFound();
+            if (template is null || !template.IsActive) return NotFound();
 
             var dto = new FormDto
             {
                 Title = template.Title,
+                Description = template.Description,
                 Slug = template.Slug,
-                Fields = JsonSerializer.Deserialize<System.Collections.Generic.List<FormFieldDefinition>>(template.FieldsJson) ?? new(),
+                Fields = ParseFields(template),
+                RequiresPayment = template.RequiresPayment,
                 Price = template.Price,
                 Currency = template.Currency
             };
@@ -111,7 +120,12 @@ namespace ArchaeoTrails.Api.Controllers
         public async Task<IActionResult> CreateOrder(string slug, [FromBody] CreateOrderRequest _)
         {
             var template = await _formTemplateRepository.GetBySlugAsync(slug);
-            if (template is null) return NotFound();
+            if (template is null || !template.IsActive) return NotFound();
+
+            if (!template.RequiresPayment)
+            {
+                return BadRequest(new { status = "error", message = "This form is free — submit it directly." });
+            }
 
             // Price is authoritative from the server-stored FormTemplate — never
             // accept an amount from the client here.
@@ -131,35 +145,51 @@ namespace ArchaeoTrails.Api.Controllers
         public async Task<IActionResult> SubmitForm(string slug, [FromBody] SubmitFormRequest request)
         {
             var template = await _formTemplateRepository.GetBySlugAsync(slug);
-            if (template is null) return NotFound();
+            if (template is null || !template.IsActive) return NotFound();
 
-            // THE ONLY SOURCE OF TRUTH for "did they pay" — never trust the
-            // client's mere presence of a payment id as success.
-            var isVerified = _paymentService.VerifySignature(
-                request.RazorpayOrderId, request.RazorpayPaymentId, request.RazorpaySignature);
-
-            if (!isVerified)
+            // Required fields are enforced here as well as in the browser — on a
+            // free form there is no payment step standing between a scripted
+            // POST and a saved row.
+            var missing = FindMissingRequiredFields(template, request.FormData);
+            if (missing.Count > 0)
             {
                 return BadRequest(new SubmitFormResponse
                 {
                     Success = false,
-                    Message = "Payment could not be verified."
+                    Message = $"Please fill in: {string.Join(", ", missing)}."
                 });
+            }
+
+            if (template.RequiresPayment)
+            {
+                // THE ONLY SOURCE OF TRUTH for "did they pay" — never trust the
+                // client's mere presence of a payment id as success.
+                var isVerified = _paymentService.VerifySignature(
+                    request.RazorpayOrderId, request.RazorpayPaymentId, request.RazorpaySignature);
+
+                if (!isVerified)
+                {
+                    return BadRequest(new SubmitFormResponse
+                    {
+                        Success = false,
+                        Message = "Payment could not be verified."
+                    });
+                }
             }
 
             var submission = new FormSubmission
             {
-                FormTemplateId = default, // set below once template.Id is known
+                FormTemplateId = template.Id,
                 DataJson = JsonSerializer.Serialize(request.FormData),
                 SubmitterName = request.SubmitterName,
                 SubmitterEmail = request.SubmitterEmail,
-                AmountPaid = template.Price,
+                // A free form never records money, whatever the client sent.
+                AmountPaid = template.RequiresPayment ? template.Price : 0m,
                 Currency = template.Currency,
-                RazorpayOrderId = request.RazorpayOrderId,
-                RazorpayPaymentId = request.RazorpayPaymentId,
-                Status = SubmissionStatus.Paid
+                RazorpayOrderId = template.RequiresPayment ? request.RazorpayOrderId : string.Empty,
+                RazorpayPaymentId = template.RequiresPayment ? request.RazorpayPaymentId : null,
+                Status = template.RequiresPayment ? SubmissionStatus.Paid : SubmissionStatus.Submitted
             };
-            submission.FormTemplateId = template.Id;
 
             await _formSubmissionRepository.CreateAsync(submission);
 
@@ -188,6 +218,7 @@ namespace ArchaeoTrails.Api.Controllers
                     Id = template.Id,
                     Title = template.Title,
                     Slug = template.Slug,
+                    RequiresPayment = template.RequiresPayment,
                     Price = template.Price,
                     Currency = template.Currency,
                     IsActive = template.IsActive,
@@ -236,6 +267,35 @@ namespace ArchaeoTrails.Api.Controllers
 
             return Ok(result);
         }
+
+        private static List<FormFieldDefinition> ParseFields(FormTemplate template) =>
+            JsonSerializer.Deserialize<List<FormFieldDefinition>>(template.FieldsJson) ?? new();
+
+        /// <summary>
+        /// Labels of the required, answer-collecting fields the submitter left blank.
+        /// Display-only blocks (heading/paragraph/divider) collect nothing, so they
+        /// are never required.
+        /// </summary>
+        private static List<string> FindMissingRequiredFields(
+            FormTemplate template, Dictionary<string, string> formData)
+        {
+            var missing = new List<string>();
+
+            foreach (var field in ParseFields(template))
+            {
+                if (!field.Required || IsDisplayOnly(field.Type)) continue;
+
+                if (!formData.TryGetValue(field.Name, out var value) || string.IsNullOrWhiteSpace(value))
+                {
+                    missing.Add(string.IsNullOrWhiteSpace(field.Label) ? field.Name : field.Label);
+                }
+            }
+
+            return missing;
+        }
+
+        private static bool IsDisplayOnly(string type) =>
+            type is "heading" or "paragraph" or "divider";
 
         private static string Slugify(string title) =>
             new string(title.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray())

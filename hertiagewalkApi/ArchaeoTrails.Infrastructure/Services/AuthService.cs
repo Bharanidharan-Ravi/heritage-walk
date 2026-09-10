@@ -21,14 +21,21 @@ namespace ArchaeoTrails.Infrastructure.Services
 
         public async Task<LoginResponse> LoginAsync(LoginRequest request)
         {
-            var genericFailure = new LoginResponse { Success = false, Message = "Invalid email or password." };
+            var genericFailure = new LoginResponse { Success = false, Message = "Invalid username or password." };
 
-            if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
+            if (string.IsNullOrWhiteSpace(request.UserName) || string.IsNullOrWhiteSpace(request.Password))
             {
                 return genericFailure;
             }
 
-            var user = await _userManager.FindByEmailAsync(request.Email);
+            var identifier = request.UserName.Trim();
+
+            // Username is the primary login handle; email is accepted as a
+            // fallback so accounts provisioned before usernames existed (and
+            // the seeded Admin) don't get locked out.
+            var user = await _userManager.FindByNameAsync(identifier)
+                ?? (identifier.Contains('@') ? await _userManager.FindByEmailAsync(identifier) : null);
+
             // Same message whether the account doesn't exist or the password is
             // wrong — never let login responses leak which accounts exist.
             if (user is null || !user.IsActive)
@@ -43,7 +50,8 @@ namespace ArchaeoTrails.Infrastructure.Services
             }
 
             var roles = await _userManager.GetRolesAsync(user);
-            var (token, expiresAtUtc) = _jwtTokenService.CreateToken(user.Id, user.Email!, roles);
+            var (token, expiresAtUtc) = _jwtTokenService.CreateToken(
+                user.Id, user.UserName ?? string.Empty, user.Email ?? string.Empty, roles);
 
             return new LoginResponse
             {
@@ -66,6 +74,7 @@ namespace ArchaeoTrails.Infrastructure.Services
         private static UserDto ToDto(ApplicationUser user, string role) => new()
         {
             Id = user.Id,
+            UserName = user.UserName ?? string.Empty,
             Email = user.Email ?? string.Empty,
             FullName = user.FullName,
             Role = role,

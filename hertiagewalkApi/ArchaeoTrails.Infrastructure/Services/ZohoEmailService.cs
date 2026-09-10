@@ -76,9 +76,14 @@ namespace ArchaeoTrails.Infrastructure.Services
                 var message = new MailMessage
                 {
                     From = new MailAddress(senderEmail!, senderName),
-                    Subject = $"New paid submission: {form.Title}",
+                    Subject = form.RequiresPayment
+                        ? $"New paid submission: {form.Title}"
+                        : $"New submission: {form.Title}",
                     Body = $"Form: {form.Title}\nSubmitter: {submission.SubmitterName} <{submission.SubmitterEmail}>\n" +
-                           $"Amount paid: {submission.AmountPaid} {submission.Currency}\nData: {submission.DataJson}",
+                           (form.RequiresPayment
+                               ? $"Amount paid: {submission.AmountPaid} {submission.Currency}\n"
+                               : "This is a free form — no payment was taken.\n") +
+                           $"Data: {submission.DataJson}",
                     IsBodyHtml = false
                 };
                 message.To.Add(senderEmail!);
@@ -116,9 +121,12 @@ namespace ArchaeoTrails.Infrastructure.Services
                 {
                     From = new MailAddress(senderEmail!, senderName),
                     Subject = $"You're confirmed: {form.Title}",
-                    Body = $"Hi {submission.SubmitterName},\n\nThanks — your payment of " +
-                           $"{submission.AmountPaid} {submission.Currency} for \"{form.Title}\" was received " +
-                           $"and your form has been submitted successfully.\n\n— {senderName}",
+                    Body = $"Hi {submission.SubmitterName},\n\n" +
+                           (form.RequiresPayment
+                               ? $"Thanks — your payment of {submission.AmountPaid} {submission.Currency} for " +
+                                 $"\"{form.Title}\" was received and your form has been submitted successfully."
+                               : $"Thanks — your response to \"{form.Title}\" has been submitted successfully.") +
+                           $"\n\n— {senderName}",
                     IsBodyHtml = false
                 };
                 message.To.Add(submission.SubmitterEmail);

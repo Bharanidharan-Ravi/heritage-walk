@@ -11,6 +11,7 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAdminAuth } from "./AuthContext";
 import { adminConfig } from "../Config/admin.config";
+import { adminUi } from "../Config/adminUi.config";
 
 export default function RequireRole({ roles }) {
   const { user, loading } = useAdminAuth();
@@ -19,7 +20,7 @@ export default function RequireRole({ roles }) {
   if (loading) {
     return (
       <div
-        className="min-h-screen flex items-center justify-center"
+        className={`min-h-screen flex items-center justify-center ${adminUi.text.body}`}
         style={{ background: adminConfig.theme.pageBackground, color: adminConfig.theme.textColor }}
       >
         Loading…
@@ -34,11 +35,11 @@ export default function RequireRole({ roles }) {
   if (roles && !roles.includes(user.role)) {
     return (
       <div
-        className="min-h-screen flex flex-col items-center justify-center gap-2 text-center px-6"
+        className="min-h-screen flex flex-col items-center justify-center gap-1 text-center px-4"
         style={{ background: adminConfig.theme.pageBackground, color: adminConfig.theme.textColor }}
       >
-        <h1 className="text-2xl font-bold">Access denied</h1>
-        <p className="opacity-70">
+        <h1 className={adminUi.text.header}>Access denied</h1>
+        <p className={`${adminUi.text.body} opacity-70`}>
           Your account ({user.role}) doesn't have permission to view this page.
         </p>
       </div>

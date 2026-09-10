@@ -16,10 +16,20 @@ export const formConfig = {
   content: {
     loadingMessage: "Loading form...",
     notFoundMessage: "This form is no longer available.",
+
+    // Paid forms (requiresPayment === true)
+    paidNotice: (amount, currency) => `${currency} ${amount} — payment required to submit.`,
     payButtonLabel: (amount, currency) => `Pay ${currency} ${amount} & Submit`,
     payingMessage: "Processing payment...",
     successMessage: "Payment received — your form has been submitted!",
     paymentFailedMessage: "Payment could not be verified. Please try again.",
+
+    // Free forms (requiresPayment === false)
+    freeNotice: "No payment needed — just fill it in and send.",
+    submitButtonLabel: "Submit",
+    submittingMessage: "Submitting...",
+    freeSuccessMessage: "Thank you — your response has been submitted!",
+
     genericErrorMessage: "Something went wrong. Please try again.",
   },
 };

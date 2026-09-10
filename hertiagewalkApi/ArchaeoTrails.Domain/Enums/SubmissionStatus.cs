@@ -7,6 +7,9 @@ namespace ArchaeoTrails.Domain.Enums
     {
         PendingPayment = 0,
         Paid = 1,
-        Failed = 2
+        Failed = 2,
+
+        /// <summary>A completed submission on a form with RequiresPayment == false.</summary>
+        Submitted = 3
     }
 }

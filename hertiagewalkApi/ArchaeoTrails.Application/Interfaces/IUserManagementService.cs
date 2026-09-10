@@ -11,6 +11,13 @@ namespace ArchaeoTrails.Application.Interfaces
     {
         Task<IReadOnlyList<UserDto>> ListAsync();
         Task<UserOperationResult> CreateAsync(CreateUserRequest request);
+
+        /// <summary>
+        /// Admin reset of an existing account's username and/or password.
+        /// Either field may be omitted to leave it unchanged.
+        /// </summary>
+        Task<UserOperationResult> UpdateCredentialsAsync(Guid userId, UpdateUserCredentialsRequest request);
+
         Task<UserOperationResult> UpdateRoleAsync(Guid userId, string role);
         Task<UserOperationResult> UpdateStatusAsync(Guid userId, bool isActive);
     }

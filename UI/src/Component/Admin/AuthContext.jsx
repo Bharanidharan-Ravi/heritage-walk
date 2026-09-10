@@ -44,8 +44,8 @@ export function AdminAuthProvider({ children }) {
     };
   }, [token]);
 
-  const login = useCallback(async (email, password) => {
-    const result = await adminApi.login(email, password);
+  const login = useCallback(async (userName, password) => {
+    const result = await adminApi.login(userName, password);
     setStoredToken(result.token);
     setToken(result.token);
     setUser(result.user);

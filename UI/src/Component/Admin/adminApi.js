@@ -53,14 +53,20 @@ async function request(path, { method = "GET", body, token } = {}) {
 }
 
 export const adminApi = {
-  login: (email, password) =>
-    request("/api/auth/login", { method: "POST", body: { email, password } }),
+  // Accounts log in with their username (the API also accepts an email here
+  // as a fallback for accounts created before usernames existed).
+  login: (userName, password) =>
+    request("/api/auth/login", { method: "POST", body: { userName, password } }),
 
   me: (token) => request("/api/auth/me", { token }),
 
   listUsers: (token) => request("/api/users", { token }),
   createUser: (token, payload) =>
     request("/api/users", { method: "POST", body: payload, token }),
+  // Admin reset of another account's login handle and/or password. Send only
+  // the field(s) being changed — { userName?, newPassword? }.
+  updateUserCredentials: (token, id, payload) =>
+    request(`/api/users/${id}/credentials`, { method: "PUT", body: payload, token }),
   updateUserRole: (token, id, role) =>
     request(`/api/users/${id}/role`, { method: "PUT", body: { role }, token }),
   updateUserStatus: (token, id, isActive) =>

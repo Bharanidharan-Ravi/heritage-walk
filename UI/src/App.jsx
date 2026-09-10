@@ -19,6 +19,7 @@ import AdminLogin from './Component/pages/admin/AdminLogin';
 import AdminDashboard from './Component/pages/admin/AdminDashboard';
 import AdminUsers from './Component/pages/admin/AdminUsers';
 import AdminForms from './Component/pages/admin/AdminForms';
+import AdminFormBuilder from './Component/pages/admin/AdminFormBuilder';
 import AdminFormSubmissions from './Component/pages/admin/AdminFormSubmissions';
 import { adminConfig } from './Component/Config/admin.config';
 
@@ -55,6 +56,7 @@ function App() {
           <Route element={<AdminLayout />}>
             <Route index element={<AdminDashboard />} />
             <Route path="forms" element={<AdminForms />} />
+            <Route path="forms/new" element={<AdminFormBuilder />} />
             <Route path="forms/:id/submissions" element={<AdminFormSubmissions />} />
             <Route element={<RequireRole roles={[adminConfig.roles.ADMIN]} />}>
               <Route path="users" element={<AdminUsers />} />

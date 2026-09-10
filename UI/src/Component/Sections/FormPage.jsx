@@ -1,20 +1,25 @@
 // src/Component/Sections/FormPage.jsx
 //
-// DRY / SKELETON page for the pay-to-submit Form Generator.
-// See docs/form-generator/MASTER_PROMPT.md for the full flow this implements:
-//   GET /api/forms/{slug}          -> render fields
-//   POST /api/forms/{slug}/order   -> get a Razorpay order
-//   Razorpay Checkout widget       -> user pays
-//   POST /api/forms/{slug}/submit  -> verify + save + emails
+// The public page behind /forms/{slug}. See
+// docs/form-generator/MASTER_PROMPT.md for the full flow.
 //
-// TODO(form-generator): this page assumes the Razorpay Checkout script is
-// added to index.html:
+//   GET  /api/forms/{slug}          -> render fields (via FormRenderer)
+//   Paid forms:
+//     POST /api/forms/{slug}/order  -> get a Razorpay order
+//     Razorpay Checkout widget      -> user pays
+//     POST /api/forms/{slug}/submit -> verify signature + save + emails
+//   Free forms (requiresPayment === false):
+//     POST /api/forms/{slug}/submit -> save + emails, no payment step at all
+//
+// TODO(form-generator): paid forms assume the Razorpay Checkout script is in
+// index.html:
 //   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-// Until then `window.Razorpay` is undefined and handlePay() shows an error.
+// Free forms work without it.
 
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { formConfig } from "../Config/form.config";
+import FormRenderer from "./FormRenderer";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -22,11 +27,11 @@ export default function FormPage() {
   const { slug } = useParams();
   const { theme, content } = formConfig;
 
-  const [form, setForm] = useState(null); // { title, fields, price, currency }
+  const [form, setForm] = useState(null); // { title, description, fields, requiresPayment, price, currency }
   const [values, setValues] = useState({});
   const [submitterName, setSubmitterName] = useState("");
   const [submitterEmail, setSubmitterEmail] = useState("");
-  const [status, setStatus] = useState("loading"); // loading | ready | paying | success | error
+  const [status, setStatus] = useState("loading"); // loading | ready | paying | submitting | success | error
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
@@ -38,8 +43,7 @@ export default function FormPage() {
           setErrorMessage(content.notFoundMessage);
           return;
         }
-        const data = await res.json();
-        setForm(data);
+        setForm(await res.json());
         setStatus("ready");
       } catch {
         setStatus("error");
@@ -53,11 +57,18 @@ export default function FormPage() {
     setValues((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handlePay = async (e) => {
+  // Free forms go straight to /submit; paid ones detour through Razorpay first.
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setStatus("paying");
     setErrorMessage("");
 
+    if (!form.requiresPayment) {
+      setStatus("submitting");
+      await submitForm(null, "");
+      return;
+    }
+
+    setStatus("paying");
     try {
       // 1. Create a Razorpay order for this form's (server-side, authoritative) price.
       const orderRes = await fetch(`${API_BASE}/api/forms/${slug}/order`, {
@@ -104,9 +115,11 @@ export default function FormPage() {
           formData: values,
           submitterName,
           submitterEmail,
-          razorpayOrderId: orderId,
-          razorpayPaymentId: paymentResult.razorpay_payment_id,
-          razorpaySignature: paymentResult.razorpay_signature,
+          // Empty on a free form — the server ignores them when
+          // requiresPayment is false and never records an amount.
+          razorpayOrderId: orderId || "",
+          razorpayPaymentId: paymentResult?.razorpay_payment_id || "",
+          razorpaySignature: paymentResult?.razorpay_signature || "",
         }),
       });
 
@@ -115,7 +128,9 @@ export default function FormPage() {
         setStatus("success");
       } else {
         setStatus("error");
-        setErrorMessage(content.paymentFailedMessage);
+        setErrorMessage(
+          result?.message || (form.requiresPayment ? content.paymentFailedMessage : content.genericErrorMessage)
+        );
       }
     } catch {
       setStatus("error");
@@ -130,8 +145,15 @@ export default function FormPage() {
     return <CenteredMessage theme={theme} text={errorMessage} />;
   }
   if (status === "success") {
-    return <CenteredMessage theme={theme} text={content.successMessage} />;
+    return (
+      <CenteredMessage
+        theme={theme}
+        text={form.requiresPayment ? content.successMessage : content.freeSuccessMessage}
+      />
+    );
   }
+
+  const busy = status === "paying" || status === "submitting";
 
   return (
     <section
@@ -140,55 +162,34 @@ export default function FormPage() {
     >
       <div className="max-w-2xl mx-auto px-6">
         <h1 className="text-3xl md:text-4xl font-serif font-medium mb-2">{form.title}</h1>
-        <p className="opacity-70 mb-10">
-          {form.currency} {form.price} — payment required to submit.
+        {form.description && <p className="opacity-70 mb-3">{form.description}</p>}
+        <p className="opacity-60 text-sm mb-10">
+          {form.requiresPayment
+            ? content.paidNotice(form.price, form.currency)
+            : content.freeNotice}
         </p>
 
-        <form onSubmit={handlePay} className="space-y-6">
-          <TextField label="Your Name" value={submitterName} onChange={setSubmitterName} required />
-          <TextField label="Your Email" type="email" value={submitterEmail} onChange={setSubmitterEmail} required />
-
-          {form.fields.map((field) => (
-            <TextField
-              key={field.name}
-              label={field.label}
-              type={field.type === "textarea" ? "text" : field.type}
-              required={field.required}
-              value={values[field.name] || ""}
-              onChange={(v) => handleFieldChange(field.name, v)}
-            />
-          ))}
-
-          <button
-            type="submit"
-            disabled={status === "paying"}
-            className="w-full py-4 font-bold uppercase tracking-widest rounded-lg transition-all hover:opacity-90 shadow-lg mt-4 disabled:opacity-50"
-            style={{ backgroundColor: theme.buttonBackground, color: theme.buttonText }}
-          >
-            {status === "paying" ? content.payingMessage : content.payButtonLabel(form.price, form.currency)}
-          </button>
-
-          {status === "error" && errorMessage && (
-            <p className="text-red-400 text-center text-sm mt-4 font-medium">{errorMessage}</p>
-          )}
-        </form>
+        <FormRenderer
+          form={form}
+          values={values}
+          onChange={handleFieldChange}
+          submitterName={submitterName}
+          submitterEmail={submitterEmail}
+          onSubmitterNameChange={setSubmitterName}
+          onSubmitterEmailChange={setSubmitterEmail}
+          onSubmit={handleSubmit}
+          submitting={busy}
+          errorMessage={status === "error" ? errorMessage : ""}
+          submitLabel={
+            busy
+              ? (form.requiresPayment ? content.payingMessage : content.submittingMessage)
+              : (form.requiresPayment
+                  ? content.payButtonLabel(form.price, form.currency)
+                  : content.submitButtonLabel)
+          }
+        />
       </div>
     </section>
-  );
-}
-
-function TextField({ label, value, onChange, type = "text", required = false }) {
-  return (
-    <div>
-      <label className="block text-xs uppercase font-bold tracking-widest mb-2 opacity-70">{label}</label>
-      <input
-        type={type}
-        required={required}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-[#0F161E] border border-white/10 rounded-lg px-4 py-4 text-white focus:outline-none focus:border-[#C19D60] transition-colors"
-      />
-    </div>
   );
 }
 

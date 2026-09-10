@@ -2,14 +2,18 @@ import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAdminAuth } from "../../Admin/AuthContext";
 import { adminConfig } from "../../Config/admin.config";
+import { adminUi } from "../../Config/adminUi.config";
 
 export default function AdminLogin() {
   const { user, login, loading } = useAdminAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { theme } = adminConfig;
+  const { text, control, pad } = adminUi;
 
-  const [email, setEmail] = useState("");
+  // Accounts sign in with their username, not their email — an Admin sets
+  // that handle when provisioning the account (see AdminUsers.jsx).
+  const [userName, setUserName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -24,10 +28,10 @@ export default function AdminLogin() {
     setError("");
     setSubmitting(true);
     try {
-      await login(email, password);
+      await login(userName, password);
       navigate("/admin");
     } catch (err) {
-      setError(err.message || "Invalid email or password.");
+      setError(err.message || adminConfig.auth.invalidCredentials);
     } finally {
       setSubmitting(false);
     }
@@ -35,51 +39,49 @@ export default function AdminLogin() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center px-6"
+      className="min-h-screen flex items-center justify-center px-4"
       style={{ background: theme.pageBackground, color: theme.textColor }}
     >
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm p-8 rounded-2xl border space-y-6"
+        className={`w-full max-w-xs ${pad.card} rounded-lg border ${adminUi.stack.md}`}
         style={{ backgroundColor: theme.cardBackground, borderColor: theme.borderColor }}
       >
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: theme.accentColor }}>
-            Admin Login
+          <h1 className={text.header} style={{ color: theme.accentColor }}>
+            {adminConfig.auth.loginTitle}
           </h1>
-          <p className="text-sm opacity-60 mt-1">Staff access only.</p>
+          <p className={`${text.body} opacity-60 mt-0.5`}>{adminConfig.auth.loginSubtitle}</p>
         </div>
 
         <div>
-          <label className="block text-xs uppercase font-bold tracking-widest mb-2 opacity-70">
-            Email
-          </label>
+          <label className={control.label}>{adminConfig.auth.userNameLabel}</label>
           <input
-            type="email"
+            type="text"
             required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full bg-black/20 border rounded-lg px-4 py-3 focus:outline-none"
-            style={{ borderColor: theme.borderColor }}
+            autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
+            value={userName}
+            onChange={(e) => setUserName(e.target.value)}
+            className={control.input}
           />
         </div>
 
         <div>
-          <label className="block text-xs uppercase font-bold tracking-widest mb-2 opacity-70">
-            Password
-          </label>
+          <label className={control.label}>{adminConfig.auth.passwordLabel}</label>
           <input
             type="password"
             required
+            autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full bg-black/20 border rounded-lg px-4 py-3 focus:outline-none"
-            style={{ borderColor: theme.borderColor }}
+            className={control.input}
           />
         </div>
 
         {error && (
-          <p className="text-sm font-medium" style={{ color: theme.dangerColor }}>
+          <p className={text.body} style={{ color: theme.dangerColor }}>
             {error}
           </p>
         )}
@@ -87,7 +89,7 @@ export default function AdminLogin() {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full py-3 rounded-lg font-bold uppercase tracking-widest disabled:opacity-50"
+          className={`w-full ${control.btnPrimary}`}
           style={{ backgroundColor: theme.accentColor, color: theme.sidebarBackground }}
         >
           {submitting ? "Signing in…" : "Sign In"}

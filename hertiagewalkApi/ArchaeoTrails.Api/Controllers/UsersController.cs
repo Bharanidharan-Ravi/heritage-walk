@@ -42,6 +42,16 @@ namespace ArchaeoTrails.Api.Controllers
             return result.Success ? Ok(result) : BadRequest(result);
         }
 
+        // PUT /api/users/{id}/credentials
+        // Admin reset of another account's username and/or password. Send only
+        // the field(s) being changed.
+        [HttpPut("{id:guid}/credentials")]
+        public async Task<IActionResult> UpdateCredentials(Guid id, [FromBody] UpdateUserCredentialsRequest request)
+        {
+            var result = await _userManagementService.UpdateCredentialsAsync(id, request);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+
         // PUT /api/users/{id}/role
         [HttpPut("{id:guid}/role")]
         public async Task<IActionResult> UpdateRole(Guid id, [FromBody] UpdateUserRoleRequest request)

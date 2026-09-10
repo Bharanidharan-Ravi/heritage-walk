@@ -30,4 +30,26 @@ export const adminConfig = {
     EMPLOYEE: "Employee",
     USER: "User",
   },
+
+  // Copy for the login screen and the Users & Roles page. Usernames are an
+  // Admin-entered login handle, deliberately separate from the account's
+  // email — the hint below mirrors Domain.Constants.UserNameRules on the API,
+  // so keep the two in sync if the rule changes.
+  auth: {
+    loginTitle: "Admin Login",
+    loginSubtitle: "Staff access only.",
+    userNameLabel: "Username",
+    passwordLabel: "Password",
+    invalidCredentials: "Invalid username or password.",
+  },
+
+  users: {
+    title: "Users & Roles",
+    createHeading: "Create account",
+    userNameHint: "3–32 characters — letters, digits, dot, underscore or hyphen.",
+    userNamePattern: "^[A-Za-z0-9._-]{3,32}$",
+    passwordMinLength: 8,
+    credentialsHeading: "Change username / password",
+    credentialsHint: "Leave a field blank to keep it unchanged.",
+  },
 };

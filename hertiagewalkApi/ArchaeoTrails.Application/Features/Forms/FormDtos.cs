@@ -8,18 +8,47 @@ namespace ArchaeoTrails.Application.Features.Forms
     public class CreateFormTemplateRequest
     {
         public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
         public List<FormFieldDefinition> Fields { get; set; } = new();
+        /// <summary>When false the form is free — Price/Currency are ignored.</summary>
+        public bool RequiresPayment { get; set; } = true;
         public decimal Price { get; set; }
         public string Currency { get; set; } = "INR";
     }
 
     public class FormFieldDefinition
     {
+        /// <summary>Stable id assigned by the builder; used as the React key and drag id.</summary>
+        public string Id { get; set; } = string.Empty;
+
+        /// <summary>Key the answer is stored under in FormSubmission.DataJson.</summary>
         public string Name { get; set; } = string.Empty;
+
         public string Label { get; set; } = string.Empty;
-        /// <summary>"text" | "email" | "phone" | "number" | "textarea" — extend as needed.</summary>
+
+        /// <summary>
+        /// Input types: "text" | "email" | "phone" | "number" | "textarea" |
+        /// "select" | "radio" | "checkbox" | "date" | "time".
+        /// Display-only blocks (no answer collected): "heading" | "paragraph" | "divider".
+        /// </summary>
         public string Type { get; set; } = "text";
+
         public bool Required { get; set; }
+
+        public string Placeholder { get; set; } = string.Empty;
+
+        /// <summary>Small hint rendered under the input.</summary>
+        public string HelpText { get; set; } = string.Empty;
+
+        /// <summary>Choices for "select" | "radio" | "checkbox"; ignored otherwise.</summary>
+        public List<string> Options { get; set; } = new();
+
+        /// <summary>
+        /// Span in a 12-column grid: 12 = full row, 6 = half, 4 = third, 3 = quarter.
+        /// Consecutive fields whose widths sum to 12 share a row, which is how the
+        /// builder does left/right side-by-side layout.
+        /// </summary>
+        public int Width { get; set; } = 12;
     }
 
     // ---- Public: read a form's schema ------------------------------------------
@@ -27,8 +56,10 @@ namespace ArchaeoTrails.Application.Features.Forms
     public class FormDto
     {
         public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
         public string Slug { get; set; } = string.Empty;
         public List<FormFieldDefinition> Fields { get; set; } = new();
+        public bool RequiresPayment { get; set; }
         public decimal Price { get; set; }
         public string Currency { get; set; } = "INR";
     }
@@ -59,6 +90,7 @@ namespace ArchaeoTrails.Application.Features.Forms
         public string SubmitterEmail { get; set; } = string.Empty;
 
         // Returned by Razorpay Checkout after a successful payment.
+        // All three stay empty for a form with RequiresPayment == false.
         public string RazorpayOrderId { get; set; } = string.Empty;
         public string RazorpayPaymentId { get; set; } = string.Empty;
         public string RazorpaySignature { get; set; } = string.Empty;
@@ -78,6 +110,7 @@ namespace ArchaeoTrails.Application.Features.Forms
         public Guid Id { get; set; }
         public string Title { get; set; } = string.Empty;
         public string Slug { get; set; } = string.Empty;
+        public bool RequiresPayment { get; set; }
         public decimal Price { get; set; }
         public string Currency { get; set; } = "INR";
         public bool IsActive { get; set; }

@@ -13,17 +13,29 @@ namespace ArchaeoTrails.Domain.Entities
 
         public string Title { get; set; } = string.Empty;
 
+        /// <summary>Optional blurb shown under the title on the public form page.</summary>
+        public string Description { get; set; } = string.Empty;
+
         /// <summary>Used in the public URL: /forms/{Slug}. Must be unique.</summary>
         public string Slug { get; set; } = string.Empty;
 
         /// <summary>
         /// JSON array of field definitions, e.g.
-        /// [{"name":"fullName","label":"Full Name","type":"text","required":true}, ...]
+        /// [{"name":"fullName","label":"Full Name","type":"text","required":true,"width":6}, ...]
         /// Kept as JSON (not a normalized table) intentionally — see MASTER_PROMPT.md §2.
+        /// The array order is the render order; "width" is the field's span in a
+        /// 12-column grid, which is how the builder puts several fields on one row.
         /// </summary>
         public string FieldsJson { get; set; } = "[]";
 
-        /// <summary>Price in the major currency unit (e.g. rupees, not paise).</summary>
+        /// <summary>
+        /// When false the form is free: no Razorpay order is created and
+        /// /submit saves the submission without a payment signature. Payment is
+        /// just another thing the form author switches on, like a field.
+        /// </summary>
+        public bool RequiresPayment { get; set; } = true;
+
+        /// <summary>Price in the major currency unit (e.g. rupees, not paise). Ignored when RequiresPayment is false.</summary>
         public decimal Price { get; set; }
 
         public string Currency { get; set; } = "INR";

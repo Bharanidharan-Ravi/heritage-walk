@@ -28,7 +28,7 @@ namespace ArchaeoTrails.Infrastructure.Services
             _configuration = configuration;
         }
 
-        public (string Token, DateTime ExpiresAtUtc) CreateToken(Guid userId, string email, IEnumerable<string> roles)
+        public (string Token, DateTime ExpiresAtUtc) CreateToken(Guid userId, string userName, string email, IEnumerable<string> roles)
         {
             var issuer = _configuration["Jwt:Issuer"] ?? "ArchaeoTrailsApi";
             var audience = _configuration["Jwt:Audience"] ?? "ArchaeoTrailsAdminPanel";
@@ -39,6 +39,8 @@ namespace ArchaeoTrails.Infrastructure.Services
             var claims = new List<Claim>
             {
                 new(JwtRegisteredClaimNames.Sub, userId.ToString()),
+                // Name = the login handle, which is now distinct from the email.
+                new(JwtRegisteredClaimNames.UniqueName, userName),
                 new(JwtRegisteredClaimNames.Email, email),
                 new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             };

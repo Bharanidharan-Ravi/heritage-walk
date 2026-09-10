@@ -38,6 +38,7 @@ namespace ArchaeoTrails.Infrastructure.Data
                 entity.HasIndex(t => t.Slug).IsUnique();
                 entity.Property(t => t.Title).HasMaxLength(200).IsRequired();
                 entity.Property(t => t.Slug).HasMaxLength(200).IsRequired();
+                entity.Property(t => t.Description).HasMaxLength(1000);
                 entity.Property(t => t.Price).HasColumnType("decimal(10,2)");
             });
 

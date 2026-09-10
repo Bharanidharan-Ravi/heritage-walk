@@ -33,6 +33,9 @@ Unpaid attempts must never be saved as successful submissions.
 | Where the feature lives | **Extend `hertiagewalkApi`** (the .NET Clean Architecture API), not Sanity/serverless | Keeps payment + persistence + email in one trusted backend instead of splitting logic across CMS + client. |
 | Form field definitions | Stored as a `NVARCHAR(MAX)` **JSON column** (`FieldsJson`) on `FormTemplate`, not a normalized fields table | Forms are admin-authored and low-volume; JSON keeps the schema flexible (add a field type without a migration) while still living in SQL. |
 | QR code generation | **Server-side**, via `QRCoder` NuGet package, served as a PNG from the API | Avoids adding a QR JS dependency to the frontend bundle; also makes the QR trivially embeddable in emails/print. |
+| Is payment mandatory? | **No — `FormTemplate.RequiresPayment` is a per-form switch.** | Not every form the company shares is a paid one. Payment is a property of the form, set in the builder next to the title, exactly like any other setting. |
+| Field layout | **12-column flow grid**: each field carries a `width` of 12/6/4/3, and consecutive fields whose widths sum to 12 share a row. | Gives real left/right/multi-field-per-row arrangement (the ask) while staying a plain array — it reorders cleanly, needs no x/y coordinates, and collapses to one column on mobile for free. A free-floating absolute grid would do neither. |
+| Drag-and-drop | **Native HTML5 drag events**, no DnD library | The UI has no DnD dependency, and "reorder with an insertion slot" is the case native DnD handles well. Every drag has a button equivalent (◀ ▶ nudge, width picker), so the builder still works by keyboard and on touch. |
 
 ---
 
@@ -56,8 +59,13 @@ Recipient scans QR or clicks link
 Frontend: FormPage.jsx  → GET /api/forms/{slug}   (public, read-only schema)
    │ renders fields from FieldsJson
    ▼
-Recipient fills form, clicks "Pay & Submit"
-   ▼
+Recipient fills form, clicks "Pay & Submit"  (or just "Submit" on a free form)
+   │
+   ├── requiresPayment === false → skip straight to POST /api/forms/{slug}/submit
+   │     with the razorpay* fields empty. The backend ignores them, saves with
+   │     Status = Submitted and AmountPaid = 0, and sends the same two emails.
+   │     /order returns 400 on a free form.
+   ▼  (requiresPayment === true, from here on)
 Frontend → POST /api/forms/{slug}/order            {amount, currency}
    │  backend calls Razorpay Orders API, returns razorpayOrderId + key
    ▼
@@ -96,9 +104,11 @@ the order was created.
 FormTemplate
 ├─ Id            (Guid, PK)
 ├─ Title         (string)
+├─ Description   (string, max 1000)    -- optional blurb under the title
 ├─ Slug          (string, unique)      -- used in the public URL
-├─ FieldsJson     (string, JSON array) -- [{ name, label, type, required }, ...]
-├─ Price          (decimal)            -- in the smallest currency unit at API boundary (paise)
+├─ FieldsJson     (string, JSON array) -- see the field shape below
+├─ RequiresPayment (bool, default true) -- false = free form, no Razorpay step
+├─ Price          (decimal)            -- in the smallest currency unit at API boundary (paise); 0 when free
 ├─ Currency       (string, default "INR")
 ├─ IsActive       (bool)
 ├─ CreatedAt      (DateTime)
@@ -114,9 +124,35 @@ FormSubmission
 ├─ Currency            (string)
 ├─ RazorpayOrderId     (string)
 ├─ RazorpayPaymentId   (string, nullable until paid)
-├─ Status              (enum: PendingPayment | Paid | Failed)
+├─ Status              (enum: PendingPayment | Paid | Failed | Submitted)
 └─ CreatedAt            (DateTime)
 ```
+
+`Submitted` is the terminal state for a form with `RequiresPayment == false`;
+`Paid` still means "Razorpay signature verified server-side" and nothing else.
+
+**Field shape inside `FieldsJson`:**
+
+```jsonc
+{
+  "id": "f1a2b3",          // builder-local: React key + drag identity
+  "name": "fullName",      // key the answer is stored under, derived from the label
+  "label": "Full Name",
+  "type": "text",          // text | textarea | email | phone | number | select |
+                           // radio | checkbox | date | time
+                           // display-only (collects nothing): heading | paragraph | divider
+  "required": true,
+  "placeholder": "",
+  "helpText": "",
+  "options": [],           // choices, for select | radio | checkbox
+  "width": 6               // 12 = full row, 6 = half, 4 = third, 3 = quarter
+}
+```
+
+Array order is render order, and `width` is the field's span in the 12-column
+grid — that pair is the entire layout model, nothing else about position is
+stored. Multi-select (`checkbox`) answers are joined with `", "` so a submission
+still fits the existing `Dictionary<string, string>`.
 
 ---
 
@@ -127,8 +163,13 @@ FormSubmission
 | `POST` | `/api/forms` | admin (TODO) | Create a `FormTemplate` |
 | `GET` | `/api/forms/{slug}` | public | Return the form's schema (title, fields, price) for rendering — **never** returns other submissions' data |
 | `GET` | `/api/forms/{slug}/qr` | public | PNG QR code pointing at `https://<site>/forms/{slug}` |
-| `POST` | `/api/forms/{slug}/order` | public | Create a Razorpay order for that form's price; returns `{ orderId, amount, currency, razorpayKeyId }` |
-| `POST` | `/api/forms/{slug}/submit` | public | Verify Razorpay signature, persist `FormSubmission`, send both emails |
+| `POST` | `/api/forms/{slug}/order` | public | Create a Razorpay order for that form's price; returns `{ orderId, amount, currency, razorpayKeyId }`. **400 if the form is free.** |
+| `POST` | `/api/forms/{slug}/submit` | public | Validate required fields, verify the Razorpay signature **when the form is paid**, persist `FormSubmission`, send both emails |
+
+`GET /{slug}`, `/order` and `/submit` all 404 on an inactive form, so
+deactivating one really does close it. Required-field validation runs
+server-side as well as in the browser — on a free form there is no payment step
+standing between a scripted POST and a saved row.
 
 Admin CRUD (list/update/deactivate forms, list submissions per form) is
 deliberately **not** in the dry scaffold — call it out as a follow-up once
@@ -146,7 +187,8 @@ there's an admin auth story (API key header at minimum, proper auth ideally).
 | Payment | `RazorpayPaymentService.cs` | **Stubbed.** `CreateOrderAsync` returns a fake order id; `VerifySignature` always returns `true`. Marked with `// TODO(form-generator)`. Needs the `Razorpay.Api` NuGet package + real `RazorpaySettings:KeyId` / `KeySecret`. |
 | Controller | `FormsController.cs` | Real routing/wiring, calls the (stub) services above. |
 | Emails | Reuses existing `IEmailService` | Real — but only has a `SendContactEmailAsync` method today; the scaffold assumes new methods `SendFormSubmissionOwnerEmailAsync` / `SendFormSubmissionConfirmationEmailAsync` will be added the same way `SendContactEmailAsync` was. |
-| Frontend | `FormPage.jsx`, `FormShare.jsx`, `form.config.jsx` | Real rendering + Razorpay Checkout call, pointed at the endpoints above. **Needs the Razorpay Checkout `<script>` added and `VITE_API_URL` set**, same env var `Contact.jsx` already uses. |
+| Frontend (public) | `FormPage.jsx`, `FormRenderer.jsx`, `FormShare.jsx`, `form.config.jsx` | Real rendering + Razorpay Checkout call, pointed at the endpoints above. Free forms are fully working end to end. **Paid forms need the Razorpay Checkout `<script>` added and `VITE_API_URL` set**, same env var `Contact.jsx` already uses. |
+| Frontend (builder) | `pages/admin/AdminFormBuilder.jsx`, `Admin/FormBuilder/*`, `formBuilder.config.jsx` | Real. Three panes — palette / drag-and-drop canvas / block settings — at `/admin/forms/new`. Preview renders through the same `FormRenderer` the public page uses, so it cannot drift from the real thing. |
 
 ---
 
@@ -188,5 +230,11 @@ there's an admin auth story (API key header at minimum, proper auth ideally).
 - No retry/idempotency handling if the email send fails after a successful
   payment — submission is still saved; failed emails should at minimum be
   logged (`TODO`) so they can be resent manually.
-- No admin UI for building forms — `POST /api/forms` must be called directly
-  (e.g. via `curl`/Postman) until one exists.
+- ~~No admin UI for building forms~~ — **done**: the drag-and-drop builder lives
+  at `/admin/forms/new`.
+- The builder **creates** forms only. There is no `PUT /api/forms/{id}` and no
+  "edit this form" route, so a published form can be activated/deactivated but
+  not reshaped. That's the obvious next step: an update endpoint plus seeding
+  `useFormBuilder` from an existing template.
+- No file-upload field type — it would need blob storage, which the API has no
+  story for yet.
