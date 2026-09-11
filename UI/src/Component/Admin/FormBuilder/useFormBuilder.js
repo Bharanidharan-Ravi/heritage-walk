@@ -4,17 +4,36 @@
 // (palette / canvas / settings) so those stay dumb and easy to restyle.
 //
 // A field is:
-//   { id, name, label, type, required, placeholder, helpText, options[], width }
+//   { id, blockKey, name, label, type, required, placeholder, helpText,
+//     options[], width,
+//     role?, validation?, children?, behavior?, allowOther?, otherLabel?,
+//     optionsFrom?, bodyText?, acknowledgementText? }
 //
 // `id` is builder-local (React key + drag identity). `name` is the key the
 // answer is stored under server-side, derived from the label so the form author
 // never has to think about it — but still editable under "Advanced".
+//
+// Fields are created by CLONING a block template out of the catalogue
+// (Config/formBuilder.config.jsx). The clone is deep, so editing a dropped
+// block never reaches back into the master definition — that is what makes
+// "edit after drop affects only this form" true.
 
 import { useCallback, useMemo, useState } from "react";
-import { fieldTypeCatalog, isDisplayOnly, hasOptions } from "../../Config/formBuilder.config";
+import {
+  blockByKey,
+  isDisplayOnly,
+  hasOptions,
+  isConsent,
+  isGroup,
+} from "../../Config/formBuilder.config";
+import { DEFAULT_FORM_BLOCKS } from "../../Config/predefinedFields.config";
 
 let idCounter = 0;
 const nextId = () => `f${Date.now().toString(36)}${(idCounter++).toString(36)}`;
+
+// Templates are pure JSON data, so a round-trip is a complete deep copy and
+// avoids structuredClone's older-browser gaps.
+const deepClone = (value) => JSON.parse(JSON.stringify(value ?? null));
 
 /** "Full Name" -> "fullName". Falls back to a stable generated key. */
 export function toFieldName(label) {
@@ -41,22 +60,53 @@ function uniqueName(base, fields, ignoreId) {
   return `${base}${n}`;
 }
 
-export function createField(type, existingFields = []) {
-  const meta = fieldTypeCatalog[type] || {};
-  const label = meta.defaultLabel || "Untitled";
+/** Sensible span when a template doesn't state one. */
+const defaultWidth = (type) =>
+  type === "textarea" || isDisplayOnly(type) || isConsent(type) || isGroup(type) ? 12 : 6;
+
+/**
+ * Build a field instance from a catalogue block key.
+ *
+ * Accepts a bare type name too ("text", "select", …) so older call sites and
+ * the drag payload can both work — generic blocks are keyed by their type.
+ */
+export function createField(blockKey, existingFields = []) {
+  const block = blockByKey[blockKey];
+  const template = deepClone(block?.field) || { type: blockKey, label: "Untitled" };
+  const type = template.type || "text";
+  const label = template.label ?? "Untitled";
+
+  const baseName = template.name || toFieldName(label);
 
   return {
+    // Template first, so it can supply role/validation/children/etc., then the
+    // fields every instance must have regardless of what the template omitted.
+    ...template,
     id: nextId(),
-    name: isDisplayOnly(type) ? "" : uniqueName(toFieldName(label), existingFields),
-    label,
+    blockKey: block?.key,
     type,
-    required: false,
-    placeholder: "",
-    helpText: "",
-    options: hasOptions(type) ? ["Option 1", "Option 2"] : [],
-    width: type === "textarea" || isDisplayOnly(type) ? 12 : 6,
+    label,
+    name: isDisplayOnly(type) ? "" : uniqueName(baseName, existingFields),
+    required: template.required ?? false,
+    placeholder: template.placeholder ?? "",
+    helpText: template.helpText ?? "",
+    options: template.options ?? (hasOptions(type) ? ["Option 1", "Option 2"] : []),
+    width: template.width ?? defaultWidth(type),
+    // Sub-fields need ids of their own to act as React keys and edit targets.
+    children: template.children?.map((child) => ({
+      ...child,
+      id: nextId(),
+      required: child.required ?? false,
+      placeholder: child.placeholder ?? "",
+      helpText: child.helpText ?? "",
+      options: child.options ?? [],
+      width: child.width ?? 6,
+    })),
   };
 }
+
+/** The answer key a group's sub-field is submitted under: "address.pincode". */
+export const childAnswerName = (field, child) => `${field.name}.${child.name}`;
 
 export function useFormBuilder() {
   const [title, setTitle] = useState("");
@@ -64,13 +114,18 @@ export function useFormBuilder() {
   const [requiresPayment, setRequiresPayment] = useState(false);
   const [price, setPrice] = useState("");
   const [currency] = useState("INR");
-  const [fields, setFields] = useState([]);
+  // A new form opens with Name and Email already on the canvas — they used to
+  // be hardcoded into the renderer, invisible and uneditable. They are now
+  // ordinary blocks the author can rename, resize, un-require or delete.
+  const [fields, setFields] = useState(() =>
+    DEFAULT_FORM_BLOCKS.reduce((acc, key) => [...acc, createField(key, acc)], [])
+  );
   const [selectedId, setSelectedId] = useState(null);
 
-  /** Insert a brand-new field of `type`, optionally at a position. */
-  const addField = useCallback((type, index) => {
+  /** Insert a brand-new field from catalogue block `blockKey`, optionally at a position. */
+  const addField = useCallback((blockKey, index) => {
     setFields((prev) => {
-      const field = createField(type, prev);
+      const field = createField(blockKey, prev);
       const at = index === undefined || index === null ? prev.length : index;
       const next = [...prev];
       next.splice(at, 0, field);
@@ -99,6 +154,17 @@ export function useFormBuilder() {
     );
   }, []);
 
+  /** Edit one sub-field of a group block, e.g. relabelling "PIN Code". */
+  const updateChild = useCallback((fieldId, childId, patch) => {
+    setFields((prev) =>
+      prev.map((f) =>
+        f.id === fieldId
+          ? { ...f, children: f.children?.map((c) => (c.id === childId ? { ...c, ...patch } : c)) }
+          : f
+      )
+    );
+  }, []);
+
   const removeField = useCallback((id) => {
     setFields((prev) => prev.filter((f) => f.id !== id));
     setSelectedId((current) => (current === id ? null : current));
@@ -111,10 +177,10 @@ export function useFormBuilder() {
 
       const source = prev[index];
       const copy = {
-        ...source,
+        ...deepClone({ ...source, id: undefined }),
         id: nextId(),
-        options: [...source.options],
         name: isDisplayOnly(source.type) ? "" : uniqueName(source.name, prev),
+        children: source.children?.map((c) => ({ ...deepClone(c), id: nextId() })),
       };
       const next = [...prev];
       next.splice(index + 1, 0, copy);
@@ -171,6 +237,15 @@ export function useFormBuilder() {
     [title, description, fields, requiresPayment, price, currency]
   );
 
+  /**
+   * Non-blocking notes. Deleting the email block is allowed — it just costs the
+   * submitter their confirmation email, and that's the author's call to make.
+   */
+  const warnings = useMemo(
+    () => (fields.some((f) => f.role === "submitterEmail") ? [] : ["noSubmitterEmail"]),
+    [fields]
+  );
+
   /** Blocking problems, surfaced before the publish request is attempted. */
   const validationErrors = useMemo(() => {
     const errors = [];
@@ -179,12 +254,23 @@ export function useFormBuilder() {
     if (requiresPayment && !(Number(price) > 0)) errors.push("A paid form needs a price above zero.");
 
     fields.forEach((f, i) => {
-      if (!isDisplayOnly(f.type) && !f.label.trim()) {
+      const named = f.label?.trim() || `Field ${i + 1}`;
+
+      if (!isDisplayOnly(f.type) && !f.label?.trim()) {
         errors.push(`Field ${i + 1} needs a label.`);
       }
-      if (hasOptions(f.type) && f.options.filter((o) => o.trim()).length === 0) {
-        errors.push(`"${f.label || `Field ${i + 1}`}" needs at least one choice.`);
+      if (hasOptions(f.type) && !f.optionsFrom && f.options.filter((o) => o.trim()).length === 0) {
+        errors.push(`"${named}" needs at least one choice.`);
       }
+      if (isConsent(f.type) && !f.acknowledgementText?.trim()) {
+        errors.push(`"${named}" needs the text the person is agreeing to.`);
+      }
+      if (isGroup(f.type) && !(f.children?.length > 0)) {
+        errors.push(`"${named}" has no sub-fields left.`);
+      }
+      f.children?.forEach((c) => {
+        if (!c.label?.trim()) errors.push(`A sub-field of "${named}" needs a label.`);
+      });
     });
 
     return errors;
@@ -208,6 +294,29 @@ export function useFormBuilder() {
         helpText: f.helpText,
         options: hasOptions(f.type) ? f.options.filter((o) => o.trim()) : [],
         width: f.width,
+        // Everything below is optional and simply absent on a plain block.
+        role: f.role ?? null,
+        validation: f.validation ?? null,
+        optionsFrom: f.optionsFrom ?? null,
+        behavior: f.behavior ?? null,
+        allowOther: f.allowOther ?? false,
+        otherLabel: f.otherLabel ?? null,
+        bodyText: f.bodyText ?? null,
+        acknowledgementText: f.acknowledgementText ?? null,
+        children:
+          f.children?.map((c) => ({
+            name: c.name,
+            label: c.label,
+            type: c.type,
+            required: c.required,
+            placeholder: c.placeholder ?? "",
+            helpText: c.helpText ?? "",
+            options: c.options ?? [],
+            width: c.width,
+            role: c.role ?? null,
+            validation: c.validation ?? null,
+            optionsFrom: c.optionsFrom ?? null,
+          })) ?? null,
       })),
     }),
     [title, description, requiresPayment, price, currency, fields]
@@ -218,7 +327,7 @@ export function useFormBuilder() {
     setDescription("");
     setRequiresPayment(false);
     setPrice("");
-    setFields([]);
+    setFields(DEFAULT_FORM_BLOCKS.reduce((acc, key) => [...acc, createField(key, acc)], []));
     setSelectedId(null);
   }, []);
 
@@ -231,9 +340,10 @@ export function useFormBuilder() {
     fields,
     selectedId, setSelectedId,
     selectedField,
-    addField, updateField, removeField, duplicateField, moveField, nudgeField,
+    addField, updateField, updateChild, removeField, duplicateField, moveField, nudgeField,
     previewForm,
     validationErrors,
+    warnings,
     toCreateRequest,
     reset,
   };

@@ -49,7 +49,7 @@ export default function AdminForms() {
   return (
     <div>
       <header className="flex flex-wrap items-center justify-between gap-2 mb-4">
-        <h1 className={text.header}>Forms &amp; Submissions</h1>
+        <h1 className={text.header}>Forms</h1>
         <Link
           to="/admin/forms/new"
           className={control.btnPrimary}

@@ -11,6 +11,10 @@ import { formBuilderConfig } from "../../Config/formBuilder.config";
 import { adminUi } from "../../Config/adminUi.config";
 import FormRenderer from "../../Sections/FormRenderer";
 
+// Preview is read-only, so no answer ever lands here — one frozen blank is
+// enough for every render.
+const EMPTY_VALUES = Object.freeze({});
+
 export default function FormPreviewModal({ form, onClose }) {
   const { theme: builderTheme, content } = formBuilderConfig;
   const publicTheme = formConfig.theme;
@@ -80,9 +84,7 @@ export default function FormPreviewModal({ form, onClose }) {
           ) : (
             <FormRenderer
               form={form}
-              values={{}}
-              submitterName=""
-              submitterEmail=""
+              values={EMPTY_VALUES}
               readOnly
               submitLabel={
                 form.requiresPayment

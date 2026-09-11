@@ -79,4 +79,31 @@ export const adminApi = {
     request(`/api/forms/${id}/status`, { method: "PUT", body: { isActive }, token }),
   listSubmissions: (token, formId) =>
     request(`/api/forms/${formId}/submissions`, { token }),
+
+  // ---- Experiences module (Walk/Seminar/Course) --------------------------
+  listExperiences: (token, params = {}) => {
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+    ).toString();
+    return request(`/api/experiences${qs ? `?${qs}` : ""}`, { token });
+  },
+  getExperience: (token, id) => request(`/api/experiences/${id}`, { token }),
+  createExperience: (token, payload) =>
+    request("/api/experiences", { method: "POST", body: payload, token }),
+  updateExperience: (token, id, payload) =>
+    request(`/api/experiences/${id}`, { method: "PUT", body: payload, token }),
+  setExperiencePayment: (token, id, payload) =>
+    request(`/api/experiences/${id}/payment`, { method: "PUT", body: payload, token }),
+  submitExperience: (token, id) =>
+    request(`/api/experiences/${id}/submit`, { method: "POST", token }),
+  approveExperience: (token, id) =>
+    request(`/api/experiences/${id}/approve`, { method: "POST", token }),
+  requestExperienceChanges: (token, id, reason) =>
+    request(`/api/experiences/${id}/request-changes`, { method: "POST", body: { reason }, token }),
+  publishExperience: (token, id) =>
+    request(`/api/experiences/${id}/publish`, { method: "POST", token }),
+  closeExperience: (token, id) =>
+    request(`/api/experiences/${id}/close`, { method: "POST", token }),
+  retryExperienceSync: (token, id) =>
+    request(`/api/experiences/${id}/sync-retry`, { method: "POST", token }),
 };

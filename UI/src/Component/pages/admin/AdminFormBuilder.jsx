@@ -79,6 +79,14 @@ export default function AdminFormBuilder() {
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => navigate("/admin/forms")}
+            className={adminUi.control.btnGhost}
+            style={{ borderColor: theme.borderColor, color: theme.mutedColor }}
+          >
+            {content.cancelLabel}
+          </button>
+          <button
+            type="button"
             onClick={() => setShowPreview(true)}
             className={adminUi.control.btnGhost}
             style={{ borderColor: theme.strongBorderColor, color: theme.accentColor }}
@@ -111,10 +119,18 @@ export default function AdminFormBuilder() {
         <p className={`mb-3 ${adminUi.text.body}`} style={{ color: theme.dangerColor }}>{saveError}</p>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[168px_1fr_232px] gap-3 items-start">
+      {/* Non-blocking: deleting the email block is allowed, it just costs the
+          submitter their confirmation email. */}
+      {builder.warnings.includes("noSubmitterEmail") && (
+        <p className={`mb-3 ${adminUi.text.body}`} style={{ color: theme.mutedColor }}>
+          {content.noSubmitterEmailWarning}
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-[176px_1fr_232px] gap-3 items-start">
         <FieldPalette
-          onAdd={(type) => builder.addField(type)}
-          onDragStartNew={(type) => setDrag({ kind: "new", type })}
+          onAdd={(blockKey) => builder.addField(blockKey)}
+          onDragStartNew={(blockKey) => setDrag({ kind: "new", blockKey })}
           onDragEnd={() => setDrag(null)}
         />
 
@@ -136,6 +152,7 @@ export default function AdminFormBuilder() {
         <FieldSettings
           field={builder.selectedField}
           onChange={builder.updateField}
+          onChangeChild={builder.updateChild}
           onRemove={builder.removeField}
         />
       </div>

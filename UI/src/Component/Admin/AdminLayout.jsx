@@ -23,7 +23,8 @@ const EXPANDED_WIDTH = 192;
 
 const NAV_ITEMS = [
   { to: "/admin", label: "Dashboard", end: true, icon: IconDashboard },
-  { to: "/admin/forms", label: "Forms & Submissions", icon: IconForms },
+  { to: "/admin/experiences", label: "Experiences", icon: IconExperiences },
+  { to: "/admin/forms", label: "Forms", icon: IconForms },
   { to: "/admin/users", label: "Users & Roles", icon: IconUsers, adminOnly: true },
 ];
 
@@ -171,6 +172,15 @@ function IconDashboard({ className }) {
       <rect x="11" y="3" width="6" height="4" rx="1" />
       <rect x="11" y="9" width="6" height="8" rx="1" />
       <rect x="3" y="12" width="6" height="5" rx="1" />
+    </svg>
+  );
+}
+
+function IconExperiences({ className }) {
+  return (
+    <svg viewBox="0 0 20 20" className={className} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 17.5s5.5-4.8 5.5-9a5.5 5.5 0 1 0-11 0c0 4.2 5.5 9 5.5 9Z" />
+      <circle cx="10" cy="8.2" r="2.1" />
     </svg>
   );
 }

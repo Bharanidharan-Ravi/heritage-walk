@@ -1,9 +1,16 @@
 // src/Component/Config/formBuilder.config.jsx
 //
-// Copy + theme + field catalogue for the admin form builder, kept out of the
+// Copy + theme + block catalogue for the admin form builder, kept out of the
 // JSX per the section+config split in CLAUDE.md. Shares the admin panel's
 // dark-museum palette (see admin.config.jsx) but adds the surfaces the
 // three-pane builder needs.
+//
+// The palette is keyed by BLOCK, not by field type: several blocks can share a
+// type (both "Phone" and "Emergency Contact" are type "phone", differing only
+// in their preset label/validation). Generic blocks use their type as their
+// key; predefined ones come from predefinedFields.config.jsx.
+
+import { predefinedBlocks } from "./predefinedFields.config";
 
 export const formBuilderConfig = {
   theme: {
@@ -31,6 +38,10 @@ export const formBuilderConfig = {
     paidFormNote: (price, currency) => `Paid — ${currency} ${price} is collected before the form is saved.`,
     saveLabel: "Publish form",
     savingLabel: "Publishing…",
+    cancelLabel: "Cancel",
+    paletteSearchPlaceholder: "Search blocks…",
+    noSubmitterEmailWarning:
+      "No email block — the person filling this in won't get a confirmation email.",
   },
 
   // Span options within the 12-column canvas grid. This is how several fields
@@ -52,51 +63,87 @@ export const formBuilderConfig = {
     12: "col-span-12",
   },
 
-  // The palette, grouped the way the left rail renders it. `hasOptions` drives
-  // the choices editor; `display` marks blocks that collect no answer and so
-  // can never be "required".
-  fieldGroups: [
-    {
-      group: "Text",
-      types: [
-        { type: "text", label: "Short answer", icon: "Ab", defaultLabel: "Short answer" },
-        { type: "textarea", label: "Paragraph", icon: "¶", defaultLabel: "Long answer" },
-        { type: "email", label: "Email", icon: "@", defaultLabel: "Email address" },
-        { type: "phone", label: "Phone", icon: "☎", defaultLabel: "Phone number" },
-        { type: "number", label: "Number", icon: "12", defaultLabel: "Number" },
-      ],
-    },
-    {
-      group: "Choice",
-      types: [
-        { type: "select", label: "Dropdown", icon: "▾", defaultLabel: "Choose one", hasOptions: true },
-        { type: "radio", label: "Single choice", icon: "◉", defaultLabel: "Pick one", hasOptions: true },
-        { type: "checkbox", label: "Multi choice", icon: "☑", defaultLabel: "Pick any", hasOptions: true },
-      ],
-    },
-    {
-      group: "Date & time",
-      types: [
-        { type: "date", label: "Date", icon: "📅", defaultLabel: "Date" },
-        { type: "time", label: "Time", icon: "⏱", defaultLabel: "Time" },
-      ],
-    },
-    {
-      group: "Layout",
-      types: [
-        { type: "heading", label: "Section heading", icon: "H", defaultLabel: "Section heading", display: true },
-        { type: "paragraph", label: "Description text", icon: "≡", defaultLabel: "Some helper text for this section.", display: true },
-        { type: "divider", label: "Divider", icon: "—", defaultLabel: "", display: true },
-      ],
-    },
+  // Order the palette renders its sections in. Predefined groups come first —
+  // they're the ones that make building fast. `open` is the default
+  // expanded/collapsed state.
+  paletteGroups: [
+    { group: "Personal", open: true },
+    { group: "Event", open: true },
+    { group: "Consent", open: false },
+    { group: "Text", open: false },
+    { group: "Choice", open: false },
+    { group: "Date & time", open: false },
+    { group: "Layout", open: false },
   ],
 };
 
-// Flat lookup by type, derived from the grouped catalogue above so the two can
-// never drift apart.
-export const fieldTypeCatalog = Object.fromEntries(
-  formBuilderConfig.fieldGroups.flatMap((g) => g.types.map((t) => [t.type, t]))
-);
+// The plain, unconfigured blocks — the ones that were here before predefined
+// blocks existed. Shape matches predefinedBlocks so both merge into one
+// catalogue.
+const genericBlocks = [
+  { key: "text", group: "Text", paletteLabel: "Short", icon: "text", keywords: "short answer single line input", field: { type: "text", label: "Short answer" } },
+  { key: "textarea", group: "Text", paletteLabel: "Paragraph", icon: "textarea", keywords: "long answer multiline notes comments", field: { type: "textarea", label: "Long answer", width: 12 } },
+  { key: "email", group: "Text", paletteLabel: "Email", icon: "email", keywords: "mail", field: { type: "email", label: "Email address" } },
+  { key: "phone", group: "Text", paletteLabel: "Phone", icon: "phone", keywords: "telephone mobile", field: { type: "phone", label: "Phone number" } },
+  { key: "number", group: "Text", paletteLabel: "Number", icon: "number", keywords: "numeric quantity amount", field: { type: "number", label: "Number" } },
 
-export const isDisplayOnly = (type) => Boolean(fieldTypeCatalog[type]?.display);
-export const hasOptions = (type) => Boolean(fieldTypeCatalog[type]?.hasOptions);
+  { key: "select", group: "Choice", paletteLabel: "Dropdown", icon: "select", keywords: "select list choose one", field: { type: "select", label: "Choose one" } },
+  { key: "radio", group: "Choice", paletteLabel: "One of", icon: "radio", keywords: "radio single choice option", field: { type: "radio", label: "Pick one", width: 12 } },
+  { key: "checkbox", group: "Choice", paletteLabel: "Any of", icon: "checkbox", keywords: "checkbox multi choice multiple", field: { type: "checkbox", label: "Pick any", width: 12 } },
+
+  { key: "date", group: "Date & time", paletteLabel: "Date", icon: "date", keywords: "calendar day", field: { type: "date", label: "Date" } },
+  { key: "time", group: "Date & time", paletteLabel: "Time", icon: "time", keywords: "clock hour", field: { type: "time", label: "Time" } },
+
+  { key: "heading", group: "Layout", paletteLabel: "Heading", icon: "heading", keywords: "section title", field: { type: "heading", label: "Section heading", width: 12 } },
+  { key: "paragraph", group: "Layout", paletteLabel: "Text", icon: "paragraph", keywords: "description helper note", field: { type: "paragraph", label: "Some helper text for this section.", width: 12 } },
+  { key: "divider", group: "Layout", paletteLabel: "Divider", icon: "divider", keywords: "separator line break", field: { type: "divider", label: "", width: 12 } },
+];
+
+/** Every block the palette can offer, predefined first. */
+export const blockCatalog = [...predefinedBlocks, ...genericBlocks];
+
+export const blockByKey = Object.fromEntries(blockCatalog.map((b) => [b.key, b]));
+
+/** Blocks bucketed into the palette's sections, in `paletteGroups` order. */
+export const paletteSections = formBuilderConfig.paletteGroups
+  .map(({ group, open }) => ({
+    group,
+    open,
+    blocks: blockCatalog.filter((b) => b.group === group),
+  }))
+  .filter((section) => section.blocks.length > 0);
+
+// ---------------------------------------------------------------- type rules
+
+/** Blocks that collect no answer, and so can never be "required". */
+const DISPLAY_ONLY = new Set(["heading", "paragraph", "divider"]);
+
+/** Blocks whose editor shows a choices list. */
+const WITH_OPTIONS = new Set(["select", "radio", "checkbox"]);
+
+/** Blocks that are a tick-box agreement rather than an input. */
+const CONSENT_TYPES = new Set(["terms", "consent"]);
+
+export const isDisplayOnly = (type) => DISPLAY_ONLY.has(type);
+export const hasOptions = (type) => WITH_OPTIONS.has(type);
+export const isConsent = (type) => CONSENT_TYPES.has(type);
+export const isGroup = (type) => type === "group";
+
+/**
+ * Descriptive label for a field on the canvas / settings pane. Prefers the
+ * exact block it was dropped from, falling back to the first block sharing its
+ * type (fields loaded from the API carry no blockKey).
+ */
+export function blockMetaFor(field) {
+  if (!field) return {};
+  return (
+    blockByKey[field.blockKey] ||
+    blockCatalog.find((b) => b.field.type === field.type) ||
+    {}
+  );
+}
+
+// Back-compat: a few call sites still look a block up by bare type name.
+export const fieldTypeCatalog = Object.fromEntries(
+  genericBlocks.map((b) => [b.field.type, { ...b, label: b.paletteLabel }])
+);

@@ -22,6 +22,7 @@ namespace ArchaeoTrails.Infrastructure.Data
 
         public DbSet<FormTemplate> FormTemplates => Set<FormTemplate>();
         public DbSet<FormSubmission> FormSubmissions => Set<FormSubmission>();
+        public DbSet<ExperienceTemplate> ExperienceTemplates => Set<ExperienceTemplate>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -49,6 +50,23 @@ namespace ArchaeoTrails.Infrastructure.Data
                       .WithMany(t => t.FormSubmissions)
                       .HasForeignKey(s => s.FormTemplateId)
                       .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<ExperienceTemplate>(entity =>
+            {
+                entity.Property(e => e.Title).HasMaxLength(200).IsRequired();
+                entity.Property(e => e.Price).HasColumnType("decimal(10,2)");
+                entity.Property(e => e.ChangesRequestedReason).HasMaxLength(2000);
+                entity.Property(e => e.LastSyncError).HasMaxLength(2000);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.Type);
+                entity.HasIndex(e => e.CreatedByUserId);
+                // A form must be deletable without taking the experience down with
+                // it — the experience simply loses its booking link.
+                entity.HasOne<FormTemplate>()
+                      .WithMany()
+                      .HasForeignKey(e => e.LinkedFormTemplateId)
+                      .OnDelete(DeleteBehavior.SetNull);
             });
         }
     }

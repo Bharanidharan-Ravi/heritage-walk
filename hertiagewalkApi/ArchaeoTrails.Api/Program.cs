@@ -55,6 +55,13 @@ builder.Services.AddScoped<IFormSubmissionRepository, EfFormSubmissionRepository
 builder.Services.AddScoped<IPaymentService, RazorpayPaymentService>();
 builder.Services.AddScoped<IQrCodeService, QrCodeService>();
 
+// --- Experiences module (Walk/Seminar/Course builder + approval workflow) ---
+// Sanity:WriteToken is placeholder-only ("REPLACE_ME") in appsettings.json —
+// see SanityContentService for the dry-scaffold behaviour until a real token
+// is added via dotnet user-secrets (dev) or Azure App Service config (prod).
+builder.Services.AddScoped<IExperienceTemplateRepository, EfExperienceTemplateRepository>();
+builder.Services.AddScoped<ISanityContentService, SanityContentService>();
+
 // --- Admin panel: Identity (Admin/Employee/User roles) + JWT auth --------
 // Jwt:* / SeedAdmin:* are placeholder-only ("REPLACE_ME") in appsettings.json.
 // Real values come from:

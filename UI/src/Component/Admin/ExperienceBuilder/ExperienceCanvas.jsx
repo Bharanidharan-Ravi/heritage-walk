@@ -1,30 +1,21 @@
-// src/Component/Admin/FormBuilder/BuilderCanvas.jsx
+// src/Component/Admin/ExperienceBuilder/ExperienceCanvas.jsx
 //
-// The arrangeable middle pane. Fields sit in a 12-column grid in array order,
-// each spanning `field.width` columns — so a row holds two Halves, three
-// Thirds, or four Quarters, and that is how left/right side-by-side layout
-// works without a free-floating absolute grid that would break on mobile.
-//
-// Dragging uses the native HTML5 drag events rather than a DnD library: the
-// repo has no such dependency today and a reorder-with-insert-slot is the one
-// case native DnD handles well. Every drag gesture also has a button
-// equivalent (◀ ▶ to nudge, width picker to resize) so the builder stays
-// usable by keyboard and on touch screens.
+// The arrangeable middle pane — same native-HTML5-drag reorder/insert-slot
+// mechanics as Admin/FormBuilder/BuilderCanvas.jsx, copied rather than shared
+// (see useExperienceBuilder.js header), rendering a content-block preview
+// instead of a form field.
 
 import React, { useState } from "react";
-import { formBuilderConfig, blockMetaFor, isDisplayOnly } from "../../Config/formBuilder.config";
+import { experienceBuilderConfig, blockMetaFor } from "../../Config/experienceBuilder.config";
 import { adminUi } from "../../Config/adminUi.config";
-import { RenderedField } from "../../Sections/FormRenderer";
+import FieldIcon from "../../Config/fieldIcons";
 
-const { theme } = formBuilderConfig;
+const { theme } = experienceBuilderConfig;
 const { text, control } = adminUi;
 
-// Canvas cards are inert previews, so composite blocks read their sub-answers
-// out of a shared frozen blank rather than a new object every render.
-const EMPTY_VALUES = Object.freeze({});
-
-export default function BuilderCanvas({
-  fields,
+export default function ExperienceCanvas({
+  experienceType,
+  blocks,
   selectedId,
   onSelect,
   onMove,
@@ -33,28 +24,22 @@ export default function BuilderCanvas({
   onRemove,
   onDuplicate,
   onWidthChange,
-  drag,          // { kind: "new", blockKey } | { kind: "move", index } | null
+  drag,
   onDragEnd,
   onDragStartMove,
 }) {
-  // Insertion slot the drop would land in: 0..fields.length, or null.
   const [dropIndex, setDropIndex] = useState(null);
-
   const clearDrop = () => setDropIndex(null);
 
   const handleDropOnCanvas = (e) => {
     e.preventDefault();
-    const target = dropIndex ?? fields.length;
-
+    const target = dropIndex ?? blocks.length;
     if (drag?.kind === "new") onInsertNew(drag.blockKey, target);
     else if (drag?.kind === "move") onMove(drag.index, target);
-
     clearDrop();
     onDragEnd();
   };
 
-  // Which half of the hovered card the pointer is in decides whether the field
-  // lands before or after it.
   const handleDragOverCard = (e, index) => {
     e.preventDefault();
     e.stopPropagation();
@@ -68,7 +53,7 @@ export default function BuilderCanvas({
     <div
       onDragOver={(e) => {
         e.preventDefault();
-        if (dropIndex === null) setDropIndex(fields.length);
+        if (dropIndex === null) setDropIndex(blocks.length);
       }}
       onDragLeave={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget)) clearDrop();
@@ -77,28 +62,28 @@ export default function BuilderCanvas({
       className={`rounded-lg border ${adminUi.pad.card} min-h-80`}
       style={{ backgroundColor: theme.canvasBackground, borderColor: theme.borderColor }}
     >
-      {fields.length === 0 ? (
+      {blocks.length === 0 ? (
         <EmptyCanvas active={Boolean(drag)} />
       ) : (
         <div className="grid grid-cols-12 gap-2 items-start">
-          {fields.map((field, index) => (
-            <React.Fragment key={field.id}>
+          {blocks.map((block, index) => (
+            <React.Fragment key={block.id}>
               {dropIndex === index && <DropIndicator />}
 
               <div
-                className={formBuilderConfig.spanClasses[field.width] || formBuilderConfig.spanClasses[12]}
+                className={experienceBuilderConfig.spanClasses[block.width] || experienceBuilderConfig.spanClasses[12]}
                 onDragOver={(e) => handleDragOverCard(e, index)}
               >
-                <FieldCard
-                  field={field}
+                <BlockCard
+                  experienceType={experienceType}
+                  block={block}
                   index={index}
-                  total={fields.length}
-                  selected={field.id === selectedId}
+                  total={blocks.length}
+                  selected={block.id === selectedId}
                   dragging={drag?.kind === "move" && drag.index === index}
-                  onSelect={() => onSelect(field.id)}
+                  onSelect={() => onSelect(block.id)}
                   onDragStart={(e) => {
-                    // Firefox refuses to begin a drag unless some data is set.
-                    e.dataTransfer.setData("text/plain", field.id);
+                    e.dataTransfer.setData("text/plain", block.id);
                     e.dataTransfer.effectAllowed = "move";
                     onDragStartMove(index);
                   }}
@@ -115,7 +100,7 @@ export default function BuilderCanvas({
             </React.Fragment>
           ))}
 
-          {dropIndex === fields.length && <DropIndicator />}
+          {dropIndex === blocks.length && <DropIndicator />}
         </div>
       )}
     </div>
@@ -125,16 +110,13 @@ export default function BuilderCanvas({
 function DropIndicator() {
   return (
     <div className="col-span-12 sm:col-span-1 h-full min-h-10 flex items-center" aria-hidden="true">
-      <div
-        className="w-full sm:w-1 h-1 sm:h-full rounded-full"
-        style={{ backgroundColor: theme.accentColor }}
-      />
+      <div className="w-full sm:w-1 h-1 sm:h-full rounded-full" style={{ backgroundColor: theme.accentColor }} />
     </div>
   );
 }
 
 function EmptyCanvas({ active }) {
-  const { content } = formBuilderConfig;
+  const { content } = experienceBuilderConfig;
   return (
     <div
       className="h-72 rounded-md border-2 border-dashed grid place-content-center text-center px-4"
@@ -146,11 +128,50 @@ function EmptyCanvas({ active }) {
   );
 }
 
-function FieldCard({
-  field, index, total, selected, dragging,
+/** Read-only, compact rendering of one block's current content — shared with ExperiencePreviewModal. */
+export function BlockValuePreview({ block }) {
+  const empty = <span className={text.body} style={{ color: theme.mutedColor }}>— empty —</span>;
+
+  switch (block.shape) {
+    case "toggle":
+      return <span className={text.body}>{block.value ? "Yes" : "No"}</span>;
+    case "imageUrl":
+    case "videoUrl":
+      return block.value ? (
+        <span className={text.body} style={{ color: theme.accentColor, wordBreak: "break-all" }}>{block.value}</span>
+      ) : empty;
+    case "gallery":
+      return block.items?.length ? (
+        <span className={text.body}>{block.items.length} image{block.items.length === 1 ? "" : "s"}</span>
+      ) : empty;
+    case "faqList":
+      return block.items?.length ? (
+        <ul className={`${text.body} space-y-0.5`}>
+          {block.items.map((it, i) => <li key={i}>• {it.question || "(question)"}</li>)}
+        </ul>
+      ) : empty;
+    case "modules":
+      return block.items?.length ? (
+        <ul className={`${text.body} space-y-0.5`}>
+          {block.items.map((it, i) => <li key={i}>• {it.title || `Module ${i + 1}`} ({it.topics?.length || 0} topics)</li>)}
+        </ul>
+      ) : empty;
+    case "repeatableList":
+      return block.items?.length ? (
+        <ul className={`${text.body} space-y-0.5`}>
+          {block.items.map((it, i) => <li key={i}>• {it}</li>)}
+        </ul>
+      ) : empty;
+    default:
+      return block.value ? <p className={`${text.body} whitespace-pre-wrap`}>{block.value}</p> : empty;
+  }
+}
+
+function BlockCard({
+  experienceType, block, index, total, selected, dragging,
   onSelect, onDragStart, onDragEnd, onNudge, onRemove, onDuplicate, onWidthChange,
 }) {
-  const meta = blockMetaFor(field);
+  const meta = blockMetaFor(experienceType, block);
 
   return (
     <div
@@ -158,9 +179,7 @@ function FieldCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onSelect}
-      className={`group rounded-md border p-1.5 cursor-grab active:cursor-grabbing transition-all ${
-        dragging ? "opacity-40" : ""
-      }`}
+      className={`group rounded-md border p-1.5 cursor-grab active:cursor-grabbing transition-all ${dragging ? "opacity-40" : ""}`}
       style={{
         backgroundColor: theme.cardBackground,
         borderColor: selected ? theme.strongBorderColor : theme.borderColor,
@@ -169,44 +188,36 @@ function FieldCard({
     >
       <div className="flex items-center gap-1.5 mb-1">
         <span className="text-[10px]" style={{ color: theme.mutedColor }} title="Drag to rearrange">⠿</span>
-        <span className={text.micro} style={{ color: theme.mutedColor }}>
-          {meta.paletteLabel || field.type}
-        </span>
-        {field.required && !isDisplayOnly(field.type) && (
-          <span className="text-[10px]" style={{ color: theme.accentColor }}>required</span>
-        )}
+        <FieldIcon name={meta.icon} className="w-3.5 h-3.5" />
+        <span className={text.micro} style={{ color: theme.mutedColor }}>{block.label || meta.paletteLabel}</span>
 
         <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-          <CardButton label="Move earlier" disabled={index === 0} onClick={() => onNudge(field.id, -1)}>◀</CardButton>
-          <CardButton label="Move later" disabled={index === total - 1} onClick={() => onNudge(field.id, 1)}>▶</CardButton>
-          <CardButton label="Duplicate" onClick={() => onDuplicate(field.id)}>⧉</CardButton>
-          <CardButton label="Delete" danger onClick={() => onRemove(field.id)}>✕</CardButton>
+          <CardButton label="Move earlier" disabled={index === 0} onClick={() => onNudge(block.id, -1)}>◀</CardButton>
+          <CardButton label="Move later" disabled={index === total - 1} onClick={() => onNudge(block.id, 1)}>▶</CardButton>
+          <CardButton label="Duplicate" onClick={() => onDuplicate(block.id)}>⧉</CardButton>
+          <CardButton label="Delete" danger onClick={() => onRemove(block.id)}>✕</CardButton>
         </div>
       </div>
 
-      {/* The real control, so the canvas already looks like the finished form —
-          at the console's own compact scale, not the public page's. */}
       <div className="pointer-events-none">
-        <RenderedField field={field} value="" values={EMPTY_VALUES} disabled compact />
+        <BlockValuePreview block={block} />
       </div>
 
       <div className="flex items-center gap-0.5 mt-1.5 pt-1 border-t" style={{ borderColor: theme.borderColor }}>
-        <span className={`${text.micro} font-normal mr-1`} style={{ color: theme.mutedColor }}>
-          Width
-        </span>
-        {formBuilderConfig.widths.map((w) => (
+        <span className={`${text.micro} font-normal mr-1`} style={{ color: theme.mutedColor }}>Width</span>
+        {experienceBuilderConfig.widths.map((w) => (
           <button
             key={w.value}
             type="button"
             title={w.hint}
             onClick={(e) => {
               e.stopPropagation();
-              onWidthChange(field.id, w.value);
+              onWidthChange(block.id, w.value);
             }}
             className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest transition-colors"
             style={{
-              backgroundColor: field.width === w.value ? "rgba(193,157,96,0.18)" : "transparent",
-              color: field.width === w.value ? theme.accentColor : theme.mutedColor,
+              backgroundColor: block.width === w.value ? "rgba(193,157,96,0.18)" : "transparent",
+              color: block.width === w.value ? theme.accentColor : theme.mutedColor,
             }}
           >
             {w.label}

@@ -1,6 +1,6 @@
 \ Form Generator — Predefined Fields & Builder UX Plan
 
-Status: **plan only, nothing implemented yet.** Companion to
+Status: **Phases 1 and 2 implemented (2026-09-10). Phase 3 not started.** Companion to
 [MASTER_PROMPT.md](MASTER_PROMPT.md), which stays the source of truth for the
 payment/submission pipeline. This doc covers making the builder as fast to use
 as Google Forms / Zoho Forms.
@@ -165,8 +165,20 @@ and the list can be corrected in one place. Author can still override with
 literal `options` after dropping.
 
 Answers flatten on submit as `address.doorNo`, `address.pincode`, … so
-`AnswersJson` stays the flat `Dictionary<string,string>` the API already
-handles. **No backend change.**
+`DataJson` stays the flat `Dictionary<string,string>` the API already handles —
+**no schema change and no migration.**
+
+> **Correction to the original plan, found during implementation.** "No backend
+> change" was wrong. `FormsController.CreateForm` stores
+> `JsonSerializer.Serialize(request.Fields)` — a serialisation of the *strongly
+> typed* `FormFieldDefinition`, not of the raw request body. Any property not
+> declared on that class is accepted by the model binder and then silently
+> dropped on save, so a form would persist with its validation and sub-fields
+> missing. `FormFieldDefinition` therefore gained the optional members
+> (`Role`, `Validation`, `Children`, `Behavior`, `AllowOther`, `OtherLabel`,
+> `OptionsFrom`, `BodyText`, `AcknowledgementText`) plus a `FieldValidation`
+> class. `FieldsJson` is still an `nvarchar` column holding whatever shape we
+> put in it: **no migration, no new table, no extra query.**
 
 ### The catalogue itself
 
@@ -186,10 +198,10 @@ arrives fully configured:
 | Block | Type | Preconfigured |
 |---|---|---|
 | Registration Type | select | options `Individual`, `Group`, required |
-| Number of Attendees | number | min 1, max 50, default 1, shown when Registration Type = Group (see §5) |
+| Number of Attendees | number | min 1, max 50, required. *Always visible* — conditional display is deferred, see §5; the help text says "Enter 1 for an individual registration." instead |
 | Preferred Lunch | checkbox | options `Veg Rice`, `Sambhar Rice`, `Curd Rice` |
 | How did you hear about this event? | checkbox | options `Whatsapp`, `Instagram`, `Website`, `Facebook`, `Other` + `allowOther: true` |
-| Updates about upcoming events? | radio | options `Yes`, `No`, default `Yes` |
+| Updates about upcoming events? | radio | options `Yes`, `No`; optional, no preselection (opting someone in by default isn't ours to assume) |
 
 **Consent**
 | Block | Type | Preconfigured |
@@ -197,7 +209,10 @@ arrives fully configured:
 | Terms and Conditions | terms | scrollable rich-text box + a required acknowledgement checkbox, prefilled with the ArchaeoTrails cancellation/refund policy |
 | Declaration | consent | required checkbox with the standard declaration paragraph |
 
-**Upload**
+**Upload** — *deferred to Phase 3, not built.* Blocked on the Blob Storage
+decision in §0, so these blocks are deliberately absent from the palette rather
+than present and broken.
+
 | Block | Type | Preconfigured |
 |---|---|---|
 | Upload Image | file | `accept="image/*"`, max 5 MB |
@@ -239,28 +254,35 @@ scroll.
   headers so the rail stays short; `Personal` and `Event` open by default.
 - A search box at the top filters across all groups — the single biggest speed
   win once the catalogue is this large.
-- Icons: extend the inline-SVG approach already used in
-  [AdminLayout.jsx](../../UI/src/Component/Admin/AdminLayout.jsx). ~25 more
-  glyphs is the point where a real icon library becomes worth it — recommend
-  adding `lucide-react` (tree-shaken, ~1–2 KB per used icon) rather than
-  hand-drawing 25 SVGs. **Needs your OK, since it's a new dependency.**
-- Widen the left rail from 168px to ~176px; drag-and-drop behaviour is unchanged.
+- Icons: **built as inline SVG** in `Config/fieldIcons.jsx`, extending the
+  approach already used in
+  [AdminLayout.jsx](../../UI/src/Component/Admin/AdminLayout.jsx). `lucide-react`
+  was floated and *not* adopted — no new dependency was explicitly approved, and
+  25 hand-drawn glyphs on one shared 20×20 stroked grid cost ~4 KB with nothing
+  to install. Revisit if the catalogue keeps growing.
+- Widen the left rail from 168px to 176px; drag-and-drop behaviour is unchanged
+  except that the drag payload is now a **block key**, not a field type — two
+  blocks can share a type (Phone and Emergency Contact are both `phone`).
 
 ---
 
-## 4. What each layer has to change
+## 4. What each layer changed
 
 | File | Change |
 |---|---|
 | `Config/predefinedFields.config.jsx` | **new** — the catalogue above |
-| `Config/indiaGeo.config.js` | **new** — states + districts JSON |
-| `Config/formBuilder.config.jsx` | add the new groups; add `group`/`terms`/`consent`/`file` to the type catalogue |
-| `Sections/FormRenderer.jsx` | drop the hardcoded name/email; render `group`, `terms`, `consent`, `file`; interpret `validation`; `optionsFrom`; `allowOther`; pincode lookup |
-| `FormBuilder/FieldPalette.jsx` | 2-col icon grid, collapsible groups, search |
-| `FormBuilder/BuilderCanvas.jsx` | render composite `group` cards; seed name/email on new form |
-| `FormBuilder/FieldSettings.jsx` | edit `validation`, edit sub-fields of a group, edit terms text |
-| `AdminFormBuilder.jsx` | Preview / Save / Cancel already exist — add **Submit-label** config; wire seeded fields |
-| `hertiagewalkApi` | **no change for phases 1–2.** Only file upload (Blob Storage) and making `submitterEmail` optional need backend work. |
+| `Config/indiaGeo.config.js` | **new** — 36 states/UTs + cached, abortable PIN-code lookup |
+| `Config/fieldIcons.jsx` | **new** — the 25-glyph inline SVG set |
+| `Config/formBuilder.config.jsx` | palette keyed by **block**, not type; `paletteSections`; `blockMetaFor`; `isConsent`/`isGroup` |
+| `Sections/FormRenderer.jsx` | hardcoded name/email removed; renders `group`, `terms`, `consent`; interprets `validation`, `optionsFrom`, `allowOther`; PIN-code lookup |
+| `Sections/FormPage.jsx` | submitter name/email read back off `role`, not from their own state |
+| `FormBuilder/useFormBuilder.js` | fields cloned from catalogue templates; seeds Name+Email; `updateChild`; `warnings` |
+| `FormBuilder/FieldPalette.jsx` | 2-col icon grid, collapsible sections, search |
+| `FormBuilder/BuilderCanvas.jsx` | block-key drag payload; block-aware card labels |
+| `FormBuilder/FieldSettings.jsx` | edits `validation`, group sub-fields, terms/consent text, `allowOther` |
+| `AdminFormBuilder.jsx` | Cancel button; no-email warning; wires `updateChild` |
+| `Application/Features/Forms/FormDtos.cs` | the optional members above + `FieldValidation` (see the correction in §2) |
+| `Api/Controllers/FormsController.cs` | required-field check descends into group children; confirmation email skipped when there's no email field |
 
 ---
 
@@ -277,17 +299,26 @@ scroll.
 
 ---
 
-## 6. Suggested phasing
+## 6. Phasing
 
-1. **Phase 1 — foundation.** Catalogue file + `validation` support in the
+1. ✅ **Phase 1 — foundation.** Catalogue file + `validation` support in the
    renderer + name/email become real seeded fields + the 2-column icon palette.
    Simple, non-composite predefined fields (Name, Email, Phone, Emergency
    Contact, Registration Type, Attendees, Lunch, Heard-about, Updates).
-   *No backend change, no migration, no DB cost.*
-2. **Phase 2 — composites.** `group` type + Indian address with pincode lookup +
-   `terms` / `consent` blocks + `allowOther`. Still frontend-only.
-3. **Phase 3 — the expensive ones.** File uploads via Blob Storage, conditional
-   visibility, server-side validation mirror.
+2. ✅ **Phase 2 — composites.** `group` type + Indian address with PIN-code
+   lookup + `terms` / `consent` blocks + `allowOther`.
+3. ⬜ **Phase 3 — the expensive ones.** File uploads via Blob Storage,
+   conditional visibility, server-side validation mirror.
 
-Phases 1 and 2 together deliver everything asked for except uploads, and cost
-**zero** additional Azure SQL compute.
+Phases 1 and 2 deliver everything asked for except uploads. No migration, no new
+table, and **zero** additional Azure SQL compute — the only backend change is a
+handful of optional DTO members so the new field shape survives the round-trip
+through `FieldsJson`.
+
+### Verified
+
+`npx vite build` and `npm run lint` clean (the one remaining `FormPage.jsx`
+exhaustive-deps warning predates this work); `dotnet build` on the API clean.
+**Not yet exercised at runtime** — the PIN-code lookup, the composite address
+and the consent blocks have not been filled in against a live API, because
+Razorpay and the DB connection are still stubbed per MASTER_PROMPT.md.

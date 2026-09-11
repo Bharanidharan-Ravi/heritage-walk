@@ -26,6 +26,7 @@ namespace ArchaeoTrails.Api.Controllers
     {
         private readonly IFormTemplateRepository _formTemplateRepository;
         private readonly IFormSubmissionRepository _formSubmissionRepository;
+        private readonly IExperienceTemplateRepository _experienceTemplateRepository;
         private readonly IPaymentService _paymentService;
         private readonly IQrCodeService _qrCodeService;
         private readonly IEmailService _emailService;
@@ -34,6 +35,7 @@ namespace ArchaeoTrails.Api.Controllers
         public FormsController(
             IFormTemplateRepository formTemplateRepository,
             IFormSubmissionRepository formSubmissionRepository,
+            IExperienceTemplateRepository experienceTemplateRepository,
             IPaymentService paymentService,
             IQrCodeService qrCodeService,
             IEmailService emailService,
@@ -41,6 +43,7 @@ namespace ArchaeoTrails.Api.Controllers
         {
             _formTemplateRepository = formTemplateRepository;
             _formSubmissionRepository = formSubmissionRepository;
+            _experienceTemplateRepository = experienceTemplateRepository;
             _paymentService = paymentService;
             _qrCodeService = qrCodeService;
             _emailService = emailService;
@@ -191,13 +194,39 @@ namespace ArchaeoTrails.Api.Controllers
                 Status = template.RequiresPayment ? SubmissionStatus.Paid : SubmissionStatus.Submitted
             };
 
-            await _formSubmissionRepository.CreateAsync(submission);
+            // Every form's default path, unchanged. Only a form linked to a
+            // capacity-limited Experience (Experiences module) takes the
+            // concurrency-safe branch below — see IFormSubmissionRepository.
+            var linkedExperience = await _experienceTemplateRepository.GetByLinkedFormTemplateIdAsync(template.Id);
+            if (linkedExperience is not null && linkedExperience.CapacityTotal.HasValue)
+            {
+                var reserved = await _formSubmissionRepository.TryCreateWithCapacityAsync(submission, linkedExperience.Id);
+                if (reserved is null)
+                {
+                    return BadRequest(new SubmitFormResponse
+                    {
+                        Success = false,
+                        Message = "Sorry, this is fully booked."
+                    });
+                }
+            }
+            else
+            {
+                await _formSubmissionRepository.CreateAsync(submission);
+            }
 
             // Fire-and-forget, same pattern as ContactController — the caller
             // shouldn't wait on SMTP, and a failed email must not undo the
             // already-saved, already-paid submission.
             _ = Task.Run(() => _emailService.SendFormSubmissionOwnerEmailAsync(template, submission));
-            _ = Task.Run(() => _emailService.SendFormSubmissionConfirmationEmailAsync(template, submission));
+
+            // The email field is a normal block now, so the form author is free
+            // to remove it. The owner still gets their copy; there is simply
+            // nobody to send the submitter's confirmation to.
+            if (!string.IsNullOrWhiteSpace(submission.SubmitterEmail))
+            {
+                _ = Task.Run(() => _emailService.SendFormSubmissionConfirmationEmailAsync(template, submission));
+            }
 
             return Ok(new SubmitFormResponse { Success = true, SubmissionId = submission.Id });
         }
@@ -275,6 +304,10 @@ namespace ArchaeoTrails.Api.Controllers
         /// Labels of the required, answer-collecting fields the submitter left blank.
         /// Display-only blocks (heading/paragraph/divider) collect nothing, so they
         /// are never required.
+        ///
+        /// A "group" block holds no answer of its own — its sub-fields do, under
+        /// dotted keys ("address.pincode") — so it is checked by descending into
+        /// its children rather than by looking for its own name.
         /// </summary>
         private static List<string> FindMissingRequiredFields(
             FormTemplate template, Dictionary<string, string> formData)
@@ -283,15 +316,31 @@ namespace ArchaeoTrails.Api.Controllers
 
             foreach (var field in ParseFields(template))
             {
-                if (!field.Required || IsDisplayOnly(field.Type)) continue;
+                if (IsDisplayOnly(field.Type)) continue;
 
-                if (!formData.TryGetValue(field.Name, out var value) || string.IsNullOrWhiteSpace(value))
+                if (field.Type == "group")
                 {
-                    missing.Add(string.IsNullOrWhiteSpace(field.Label) ? field.Name : field.Label);
+                    foreach (var child in field.Children ?? new List<FormFieldDefinition>())
+                    {
+                        if (!child.Required) continue;
+                        CheckOne(child, $"{field.Name}.{child.Name}", $"{field.Label} — {child.Label}");
+                    }
+                    continue;
                 }
+
+                if (!field.Required) continue;
+                CheckOne(field, field.Name, field.Label);
             }
 
             return missing;
+
+            void CheckOne(FormFieldDefinition field, string key, string label)
+            {
+                if (!formData.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+                {
+                    missing.Add(string.IsNullOrWhiteSpace(label) ? key : label);
+                }
+            }
         }
 
         private static bool IsDisplayOnly(string type) =>

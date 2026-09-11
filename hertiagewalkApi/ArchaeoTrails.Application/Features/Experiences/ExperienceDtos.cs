@@ -1,0 +1,126 @@
+using System;
+using System.Collections.Generic;
+
+namespace ArchaeoTrails.Application.Features.Experiences
+{
+    // ---- Employee/Admin: create ------------------------------------------------
+
+    public class CreateExperienceRequest
+    {
+        /// <summary>"Walk" | "Seminar" | "Course" (case-insensitive).</summary>
+        public string Type { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+
+        /// <summary>Content blocks from the Experience Builder, as opaque JSON-able objects.</summary>
+        public List<object> ContentBlocks { get; set; } = new();
+
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public DateTime? BookingEndDate { get; set; }
+    }
+
+    // ---- Employee/Admin: edit content (owner-in-Draft/ChangesRequested, or Admin) ----
+
+    public class UpdateExperienceRequest
+    {
+        public string Title { get; set; } = string.Empty;
+        public List<object> ContentBlocks { get; set; } = new();
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public DateTime? BookingEndDate { get; set; }
+    }
+
+    // ---- Admin-only: payment/capacity/booking-form configuration ---------------
+
+    public class SetExperiencePaymentRequest
+    {
+        public bool RequiresPayment { get; set; }
+        public decimal Price { get; set; }
+        public string Currency { get; set; } = "INR";
+
+        /// <summary>Null = unlimited capacity.</summary>
+        public int? CapacityTotal { get; set; }
+
+        public Guid? LinkedFormTemplateId { get; set; }
+    }
+
+    public class RequestChangesRequest
+    {
+        public string Reason { get; set; } = string.Empty;
+    }
+
+    // ---- List (management page) -------------------------------------------------
+
+    public class ExperienceListItemDto
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+
+        public bool RequiresPayment { get; set; }
+        public decimal Price { get; set; }
+        public string Currency { get; set; } = "INR";
+
+        /// <summary>Confirmed bookings, derived from CapacityTotal - CapacityRemaining (never a naive live COUNT).</summary>
+        public int BookingConfirmed { get; set; }
+        /// <summary>Null = unlimited.</summary>
+        public int? CapacityTotal { get; set; }
+        public bool BookingEnabled { get; set; }
+
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public DateTime? BookingEndDate { get; set; }
+
+        public Guid CreatedByUserId { get; set; }
+        public string CreatedByName { get; set; } = string.Empty;
+        public DateTime UpdatedAt { get; set; }
+    }
+
+    public class PagedResult<T>
+    {
+        public List<T> Items { get; set; } = new();
+        public int TotalCount { get; set; }
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+    }
+
+    // ---- Detail (builder) --------------------------------------------------------
+
+    public class ExperienceDetailDto
+    {
+        public Guid Id { get; set; }
+        public string Type { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public List<object> ContentBlocks { get; set; } = new();
+
+        public bool RequiresPayment { get; set; }
+        public decimal Price { get; set; }
+        public string Currency { get; set; } = "INR";
+        public int? CapacityTotal { get; set; }
+        public int? CapacityRemaining { get; set; }
+        public Guid? LinkedFormTemplateId { get; set; }
+
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public DateTime? BookingEndDate { get; set; }
+
+        public Guid CreatedByUserId { get; set; }
+        public string CreatedByName { get; set; } = string.Empty;
+        public string? ChangesRequestedReason { get; set; }
+
+        public string SanitySyncStatus { get; set; } = string.Empty;
+        public string? LastSyncError { get; set; }
+        public DateTime? LastSyncedAt { get; set; }
+
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+
+    public class ExperienceOperationResult
+    {
+        public bool Success { get; set; }
+        public string? Message { get; set; }
+    }
+}

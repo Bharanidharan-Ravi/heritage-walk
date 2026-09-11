@@ -29,8 +29,6 @@ export default function FormPage() {
 
   const [form, setForm] = useState(null); // { title, description, fields, requiresPayment, price, currency }
   const [values, setValues] = useState({});
-  const [submitterName, setSubmitterName] = useState("");
-  const [submitterEmail, setSubmitterEmail] = useState("");
   const [status, setStatus] = useState("loading"); // loading | ready | paying | submitting | success | error
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -56,6 +54,21 @@ export default function FormPage() {
   const handleFieldChange = (name, value) => {
     setValues((prev) => ({ ...prev, [name]: value }));
   };
+
+  /**
+   * Name and email are ordinary fields now, marked with a role by the builder
+   * rather than hardcoded above the form. Read the answer back off whichever
+   * field carries the role — and cope with it being absent, because the author
+   * is allowed to delete it (the API then just skips the submitter's copy of
+   * the confirmation email).
+   */
+  const answerByRole = (role) => {
+    const field = form?.fields?.find((f) => f.role === role);
+    return field ? values[field.name] || "" : "";
+  };
+
+  const submitterName = answerByRole("submitterName");
+  const submitterEmail = answerByRole("submitterEmail");
 
   // Free forms go straight to /submit; paid ones detour through Razorpay first.
   const handleSubmit = async (e) => {
@@ -173,10 +186,6 @@ export default function FormPage() {
           form={form}
           values={values}
           onChange={handleFieldChange}
-          submitterName={submitterName}
-          submitterEmail={submitterEmail}
-          onSubmitterNameChange={setSubmitterName}
-          onSubmitterEmailChange={setSubmitterEmail}
           onSubmit={handleSubmit}
           submitting={busy}
           errorMessage={status === "error" ? errorMessage : ""}
