@@ -147,4 +147,9 @@ export const adminApi = {
   // ExperienceBlockSettings.jsx's image drop-zones.
   uploadExperienceImage: (token, file) =>
     uploadFile("/api/experiences/assets/image", token, file),
+  // Frees the Sanity asset when a hero/gallery image is removed or replaced
+  // — best-effort from the caller's side (see ExperienceBlockSettings.jsx),
+  // so a failure here never blocks removing the image from the block itself.
+  deleteExperienceImage: (token, url) =>
+    request(`/api/experiences/assets/image?url=${encodeURIComponent(url)}`, { method: "DELETE", token }),
 };

@@ -205,6 +205,8 @@ namespace ArchaeoTrails.Api.Controllers
                 Currency = experience.Currency,
                 CapacityTotal = experience.CapacityTotal,
                 CapacityRemaining = experience.CapacityRemaining,
+                RegistrationType = experience.RegistrationType.ToString(),
+                Slots = JsonSerializer.Deserialize<List<DateTime>>(experience.SlotsJson) ?? new(),
                 BookingEnabled = bookingEnabled,
                 LinkedFormSlug = linkedFormSlug,
                 StartDate = experience.StartDate,
@@ -297,6 +299,14 @@ namespace ArchaeoTrails.Api.Controllers
             {
                 return BadRequest(new { status = "error", message = "That registration form doesn't exist." });
             }
+            if (!Enum.TryParse<RegistrationType>(request.RegistrationType, true, out var registrationType))
+            {
+                return BadRequest(new { status = "error", message = "Invalid registration type. Use Individual, Group or Both." });
+            }
+            if (registrationType != RegistrationType.Individual && request.Slots.Count == 0)
+            {
+                return BadRequest(new { status = "error", message = "Add at least one bookable date for Group registration." });
+            }
 
             experience.RequiresPayment = request.RequiresPayment;
             experience.Price = request.RequiresPayment ? request.Price : 0m;
@@ -305,6 +315,16 @@ namespace ArchaeoTrails.Api.Controllers
             // Re-seed the atomic counter whenever capacity is (re)configured.
             experience.CapacityRemaining = request.CapacityTotal;
             experience.LinkedFormTemplateId = request.LinkedFormTemplateId;
+            experience.RegistrationType = registrationType;
+            // Individual-only ignores slots entirely (BookingEndDate alone gates
+            // it) — clearing them here instead of trusting the caller to send an
+            // empty list keeps a stale Group slot list from lingering unseen.
+            // Duplicate dates are kept as-is (not deduped): an Admin can add
+            // more than one slot for the same day — e.g. a morning and an
+            // evening batch — even though a slot carries no other field yet.
+            experience.SlotsJson = registrationType == RegistrationType.Individual
+                ? "[]"
+                : JsonSerializer.Serialize(request.Slots.OrderBy(d => d));
 
             await _experiences.UpdateAsync(experience);
             await _events.ExperienceUpdatedAsync(experience.Id);
@@ -467,6 +487,30 @@ namespace ArchaeoTrails.Api.Controllers
             return Ok(new ImageAssetDto { Url = result.Url!, AssetId = result.AssetId! });
         }
 
+        // DELETE /api/experiences/assets/image?url=<sanity cdn url>
+        // Frees the underlying Sanity asset when a hero/gallery image is
+        // removed (or replaced) in the builder, so unused uploads don't sit
+        // around consuming the Sanity project's asset storage indefinitely.
+        // Only the public CDN url is ever known client-side (it's the only
+        // thing stored on the content block), so the asset id is derived
+        // from it server-side — see SanityContentService.DeleteImageAssetAsync.
+        [HttpDelete("assets/image")]
+        public async Task<IActionResult> DeleteImageAsset([FromQuery] string? url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return BadRequest(new { status = "error", message = "url is required." });
+            }
+
+            var result = await _sanity.DeleteImageAssetAsync(url);
+            if (!result.Success)
+            {
+                return StatusCode(502, new { status = "error", message = result.Error });
+            }
+
+            return Ok(new ExperienceOperationResult { Success = true });
+        }
+
         // POST /api/experiences/{id}/sync-retry  (Admin only)
         [HttpPost("{id:guid}/sync-retry")]
         [Authorize(Roles = Roles.Admin)]
@@ -541,6 +585,8 @@ namespace ArchaeoTrails.Api.Controllers
                 BookingConfirmed = confirmed,
                 CapacityTotal = e.CapacityTotal,
                 BookingEnabled = bookingEnabled,
+                RegistrationType = e.RegistrationType.ToString(),
+                Slots = JsonSerializer.Deserialize<List<DateTime>>(e.SlotsJson) ?? new(),
                 StartDate = e.StartDate,
                 EndDate = e.EndDate,
                 BookingEndDate = e.BookingEndDate,
@@ -571,6 +617,8 @@ namespace ArchaeoTrails.Api.Controllers
                 CapacityTotal = e.CapacityTotal,
                 CapacityRemaining = e.CapacityRemaining,
                 LinkedFormTemplateId = e.LinkedFormTemplateId,
+                RegistrationType = e.RegistrationType.ToString(),
+                Slots = JsonSerializer.Deserialize<List<DateTime>>(e.SlotsJson) ?? new(),
                 StartDate = e.StartDate,
                 EndDate = e.EndDate,
                 BookingEndDate = e.BookingEndDate,

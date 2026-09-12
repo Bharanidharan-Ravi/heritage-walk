@@ -10,24 +10,81 @@
 import React, { useRef, useState } from "react";
 import { experienceBuilderConfig, blockMetaFor } from "../../Config/experienceBuilder.config";
 import { adminUi } from "../../Config/adminUi.config";
-import { useAdminAuth } from "../AuthContext";
-import { adminApi } from "../adminApi";
+import { useExperienceImageUpload, validateImageFile, ACCEPTED_IMAGE_TYPES } from "./imageUpload";
+import { TITLE_BLOCK_ID, CART_BLOCK_ID } from "./ExperienceCanvas";
 
-const { theme } = experienceBuilderConfig;
-const { text, control } = adminUi;
+const REGISTRATION_TYPES = [
+  { value: "Individual", label: "Individual only" },
+  { value: "Group", label: "Group (private) only" },
+  { value: "Both", label: "Individual + Group" },
+];
 
-// Mirrors the API's own allow-list/size cap (ExperiencesController.UploadImageAsset)
-// so a bad file is rejected instantly instead of round-tripping to the server.
-const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+/** One slot per calendar day from `start` to `end`, inclusive — the seed list
+ *  an Admin then edits by hand (remove a date, add extra ones for the same
+ *  day). Returns [] if either date is missing/invalid or end < start. */
+function dailySlotsBetween(start, end) {
+  const from = new Date(`${start}T00:00:00`);
+  const to = new Date(`${end}T00:00:00`);
+  if (!start || !end || Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to < from) return [];
 
-function validateImageFile(file) {
-  if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) return "Only JPEG, PNG, WebP or GIF images are allowed.";
-  if (file.size > MAX_IMAGE_BYTES) return "Image is larger than 8MB.";
-  return null;
+  const days = [];
+  for (let d = from; d <= to; d.setDate(d.getDate() + 1)) {
+    days.push(d.toISOString().slice(0, 10));
+  }
+  return days;
 }
 
-export default function ExperienceBlockSettings({ experienceType, block, onChange, onRemove }) {
+const { theme, content } = experienceBuilderConfig;
+const { text, control } = adminUi;
+
+// `block` is null both when nothing is selected AND when the selection is the
+// title or the cart — two fields that live outside the block array, so they
+// come through as `selectedId` sentinels instead. Title has no block object
+// of its own but is still edited from here too (see ExperienceCanvas's
+// inline title editor); the cart (registration type, schedule, slots,
+// payment) is Admin-only and edited ONLY here — CartEditor below.
+export default function ExperienceBlockSettings({
+  experienceType, block, onChange, onRemove,
+  selectedId, title, onTitleChange,
+  startDate, endDate, bookingEndDate, onStartDateChange, onEndDateChange, onBookingEndDateChange,
+  hasExperienceId,
+  requiresPayment, onRequiresPaymentChange,
+  price, onPriceChange,
+  currency, onCurrencyChange,
+  capacityTotal, onCapacityTotalChange,
+  registrationType, onRegistrationTypeChange,
+  slots, onSlotsChange,
+  onSaveCart, cartSaving, cartError,
+}) {
+  if (selectedId === TITLE_BLOCK_ID) {
+    return (
+      <aside className={`rounded-lg border ${adminUi.pad.panel} h-fit lg:sticky lg:top-4 ${adminUi.stack.sm}`} style={{ backgroundColor: theme.panelBackground, borderColor: theme.borderColor }}>
+        <p className={text.micro} style={{ color: theme.mutedColor }}>Title</p>
+        <Labelled label="Experience title">
+          <input value={title} onChange={(e) => onTitleChange(e.target.value)} className={control.input} />
+        </Labelled>
+      </aside>
+    );
+  }
+
+  if (selectedId === CART_BLOCK_ID) {
+    return (
+      <CartEditor
+        hasExperienceId={hasExperienceId}
+        requiresPayment={requiresPayment} onRequiresPaymentChange={onRequiresPaymentChange}
+        price={price} onPriceChange={onPriceChange}
+        currency={currency} onCurrencyChange={onCurrencyChange}
+        capacityTotal={capacityTotal} onCapacityTotalChange={onCapacityTotalChange}
+        registrationType={registrationType} onRegistrationTypeChange={onRegistrationTypeChange}
+        slots={slots} onSlotsChange={onSlotsChange}
+        startDate={startDate} onStartDateChange={onStartDateChange}
+        endDate={endDate} onEndDateChange={onEndDateChange}
+        bookingEndDate={bookingEndDate} onBookingEndDateChange={onBookingEndDateChange}
+        onSave={onSaveCart} saving={cartSaving} error={cartError}
+      />
+    );
+  }
+
   if (!block) {
     return (
       <aside className={`rounded-lg border ${adminUi.pad.panel} h-fit lg:sticky lg:top-4`} style={{ backgroundColor: theme.panelBackground, borderColor: theme.borderColor }}>
@@ -52,6 +109,122 @@ export default function ExperienceBlockSettings({ experienceType, block, onChang
       </Labelled>
 
       <BlockValueEditor block={block} patch={patch} />
+    </aside>
+  );
+}
+
+/** Admin-only cart/payment/schedule editor — the canvas's cart widget,
+ *  clicked like any other slot. Payment/capacity/registration-type/slots go
+ *  through their OWN endpoint (PUT .../payment); Start/End/Booking-end date
+ *  go through the regular draft save — the parent's onSave (handleSaveCart)
+ *  fires both under this one button, creating the draft first if it doesn't
+ *  have an id yet (`hasExperienceId` false), same request Save Draft sends. */
+function CartEditor({
+  hasExperienceId,
+  requiresPayment, onRequiresPaymentChange,
+  price, onPriceChange,
+  currency, onCurrencyChange,
+  capacityTotal, onCapacityTotalChange,
+  registrationType, onRegistrationTypeChange,
+  slots, onSlotsChange,
+  startDate, onStartDateChange,
+  endDate, onEndDateChange,
+  bookingEndDate, onBookingEndDateChange,
+  onSave, saving, error,
+}) {
+  const needsSlots = registrationType !== "Individual";
+  const needsBookingEndDate = registrationType !== "Group";
+  const canGenerate = Boolean(startDate && endDate);
+
+  const generateFromSchedule = () => onSlotsChange(dailySlotsBetween(startDate, endDate));
+  const setSlotAt = (i, value) => onSlotsChange(slots.map((s, idx) => (idx === i ? value : s)));
+  const removeSlotAt = (i) => onSlotsChange(slots.filter((_, idx) => idx !== i));
+  const addSlot = () => onSlotsChange([...slots, slots[slots.length - 1] || startDate || ""]);
+
+  return (
+    <aside className={`rounded-lg border ${adminUi.pad.panel} h-fit lg:sticky lg:top-4 ${adminUi.stack.sm}`} style={{ backgroundColor: theme.panelBackground, borderColor: theme.borderColor }}>
+      <p className={text.micro} style={{ color: theme.mutedColor }}>Cart & payment</p>
+
+      <label className="flex items-center gap-1.5 cursor-pointer">
+        <input type="checkbox" checked={requiresPayment} onChange={(e) => onRequiresPaymentChange(e.target.checked)} className={control.checkbox} />
+        <span className={text.body}>Requires payment</span>
+      </label>
+
+      {requiresPayment && (
+        <div className="flex items-center gap-1.5">
+          <input value={currency} onChange={(e) => onCurrencyChange(e.target.value)} className={`${control.inputSm} w-16`} />
+          <input type="number" min="1" step="0.01" placeholder="Price" value={price} onChange={(e) => onPriceChange(e.target.value)} className={control.inputSm} />
+        </div>
+      )}
+
+      <Labelled label="Capacity" help="Blank = unlimited">
+        <input type="number" min="0" value={capacityTotal} onChange={(e) => onCapacityTotalChange(e.target.value)} className={control.input} />
+      </Labelled>
+
+      <div>
+        <label className={control.label}>Registration type</label>
+        <div className={adminUi.stack.xs}>
+          {REGISTRATION_TYPES.map((t) => (
+            <label key={t.value} className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="radio"
+                name="registrationType"
+                checked={registrationType === t.value}
+                onChange={() => onRegistrationTypeChange(t.value)}
+                className={control.checkbox}
+              />
+              <span className={text.body}>{t.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Schedule — used to live in a generic top toolbar/canvas slot; moved
+          here since which date(s) apply depends entirely on Registration
+          type, right above. Still saved as part of the DRAFT (not the
+          payment request) under the hood, but one click on Save below
+          covers both — see handleSaveCart in AdminExperienceBuilder.jsx. */}
+      {needsBookingEndDate && (
+        <Labelled label={content.bookingEndDateLabel} help="Deadline for Individual bookings.">
+          <input type="date" value={bookingEndDate} onChange={(e) => onBookingEndDateChange(e.target.value)} className={control.input} />
+        </Labelled>
+      )}
+
+      {needsSlots && (
+        <>
+          <div className="grid grid-cols-2 gap-1.5">
+            <Labelled label={content.startDateLabel}>
+              <input type="date" value={startDate} onChange={(e) => onStartDateChange(e.target.value)} className={control.input} />
+            </Labelled>
+            <Labelled label={content.endDateLabel}>
+              <input type="date" value={endDate} onChange={(e) => onEndDateChange(e.target.value)} className={control.input} />
+            </Labelled>
+          </div>
+
+          <div>
+            <label className={control.label}>Bookable dates (Group)</label>
+            {slots.length === 0 && <p className={`${control.help} mb-1`}>No dates yet — generate from Start/End date above, or add one manually.</p>}
+            <div className={adminUi.stack.xs}>
+              {slots.map((s, i) => (
+                <div key={i} className="flex items-center gap-1">
+                  <input type="date" value={s} onChange={(e) => setSlotAt(i, e.target.value)} className={control.inputSm} />
+                  <RowButton label="Remove slot" danger onClick={() => removeSlotAt(i)}>✕</RowButton>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              <AddRowButton onClick={addSlot}>+ Add slot</AddRowButton>
+              {canGenerate && <AddRowButton onClick={generateFromSchedule}>↻ Regenerate from {startDate} – {endDate}</AddRowButton>}
+            </div>
+            {!canGenerate && <p className={control.help}>Set Start/End date above to generate one slot per day.</p>}
+          </div>
+        </>
+      )}
+
+      {error && <p className={text.body} style={{ color: theme.dangerColor }}>{error}</p>}
+      <button type="button" onClick={onSave} disabled={saving} className={control.btnPrimary} style={{ backgroundColor: theme.accentColor, color: theme.pageBackground }}>
+        {saving ? "Saving…" : hasExperienceId ? "Save cart settings" : "Save draft & cart settings"}
+      </button>
     </aside>
   );
 }
@@ -252,7 +425,7 @@ function DropSurface({ multiple, uploading, error, onFiles, label, height = "h-2
  *  asset store via the API, and the returned public CDN url becomes the
  *  block's value — same storage shape as before, just no more hand-typed URL. */
 function SingleImageDropzone({ value, onUploaded, onRemove }) {
-  const { token } = useAdminAuth();
+  const { upload, remove: deleteFromSanity } = useExperienceImageUpload();
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
@@ -268,8 +441,10 @@ function SingleImageDropzone({ value, onUploaded, onRemove }) {
     setError("");
     setUploading(true);
     try {
-      const result = await adminApi.uploadExperienceImage(token, file);
+      const result = await upload(file);
+      const previous = value;
       onUploaded(result.url);
+      deleteFromSanity(previous);
     } catch (err) {
       setError(err.message || "Upload failed.");
     } finally {
@@ -277,12 +452,17 @@ function SingleImageDropzone({ value, onUploaded, onRemove }) {
     }
   };
 
+  const handleRemove = () => {
+    deleteFromSanity(value);
+    onRemove();
+  };
+
   return (
     <div className={adminUi.stack.xs}>
       {value && (
         <div className="relative">
           <img src={value} alt="" className="max-h-32 w-full object-cover rounded border" style={{ borderColor: theme.borderColor }} />
-          <button type="button" title="Remove" aria-label="Remove" onClick={onRemove} className={control.iconBtn} style={{ position: "absolute", top: 4, right: 4, color: theme.dangerColor, backgroundColor: theme.panelBackground }}>✕</button>
+          <button type="button" title="Remove" aria-label="Remove" onClick={handleRemove} className={control.iconBtn} style={{ position: "absolute", top: 4, right: 4, color: theme.dangerColor, backgroundColor: theme.panelBackground }}>✕</button>
         </div>
       )}
       <DropSurface multiple={false} uploading={uploading} error={error} onFiles={handleFiles} label={value ? "Drop a new image to replace it" : undefined} />
@@ -294,7 +474,7 @@ function SingleImageDropzone({ value, onUploaded, onRemove }) {
  *  uploaded to Sanity the same way as the hero image; resulting urls are
  *  appended to `items` (still a plain array of url strings). */
 function GalleryDropzone({ items, onChange }) {
-  const { token } = useAdminAuth();
+  const { upload, remove: deleteFromSanity } = useExperienceImageUpload();
   const list = items || [];
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
@@ -310,7 +490,7 @@ function GalleryDropzone({ items, onChange }) {
     setError("");
     setUploading(true);
     try {
-      const results = await Promise.all(files.map((file) => adminApi.uploadExperienceImage(token, file)));
+      const results = await Promise.all(files.map((file) => upload(file)));
       onChange([...list, ...results.map((r) => r.url)]);
     } catch (err) {
       setError(err.message || "Upload failed.");
@@ -319,7 +499,13 @@ function GalleryDropzone({ items, onChange }) {
     }
   };
 
-  const removeAt = (i) => onChange(list.filter((_, idx) => idx !== i));
+  // Best-effort, same as the hero dropzone — never blocks removing the item
+  // from the gallery on the network call succeeding.
+  const removeAt = (i) => {
+    const removed = list[i];
+    onChange(list.filter((_, idx) => idx !== i));
+    deleteFromSanity(removed);
+  };
 
   return (
     <div>

@@ -57,14 +57,19 @@ export function useExperienceBuilder(experienceType) {
   );
   const [selectedId, setSelectedId] = useState(null);
 
-  const addBlock = useCallback((blockKey, index) => {
+  // `valuePatch` lets a caller create-and-fill in one step — e.g. the canvas's
+  // hero-image drop target, which uploads a file and adds the hero block with
+  // its value already set, instead of adding an empty block and patching it
+  // in a second, separately-batched update.
+  const addBlock = useCallback((blockKey, index, valuePatch) => {
     setBlocks((prev) => {
       const block = createBlock(experienceType, blockKey);
       if (!block) return prev;
+      const withPatch = valuePatch ? { ...block, ...valuePatch } : block;
       const at = index === undefined || index === null ? prev.length : index;
       const next = [...prev];
-      next.splice(at, 0, block);
-      setSelectedId(block.id);
+      next.splice(at, 0, withPatch);
+      setSelectedId(withPatch.id);
       return next;
     });
   }, [experienceType]);

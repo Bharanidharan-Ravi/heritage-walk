@@ -487,6 +487,13 @@ function SetPaymentModal({ row, token, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // Not edited here — the Experience Builder's own cart widget owns
+  // registration type/slots now (Admin-only) — but this modal still PUTs the
+  // whole payment request, so these have to be carried through untouched or
+  // a price-only save from here would silently reset them.
+  const registrationType = row.registrationType || "Individual";
+  const slots = row.slots || [];
+
   useEffect(() => {
     adminApi.listForms(token).then(setForms).catch(() => {});
   }, [token]);
@@ -501,6 +508,8 @@ function SetPaymentModal({ row, token, onClose, onSaved }) {
         currency,
         capacityTotal: capacityTotal === "" ? null : Number(capacityTotal),
         linkedFormTemplateId: linkedFormTemplateId || null,
+        registrationType,
+        slots,
       });
       await onSaved();
     } catch (err) {

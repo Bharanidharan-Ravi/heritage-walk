@@ -31,6 +31,17 @@ namespace ArchaeoTrails.Application.Interfaces
             new() { Success = false, Error = error };
     }
 
+    public class SanityAssetDeleteResult
+    {
+        public bool Success { get; set; }
+        public string? Error { get; set; }
+
+        public static SanityAssetDeleteResult Ok() => new() { Success = true };
+
+        public static SanityAssetDeleteResult Fail(string error) =>
+            new() { Success = false, Error = error };
+    }
+
     /// <summary>
     /// Pushes an ExperienceTemplate's editorial content (title, description,
     /// images, highlights, FAQ, ...) to Sanity as a draft/published document.
@@ -55,5 +66,16 @@ namespace ArchaeoTrails.Application.Interfaces
         /// content block, same shape as a hand-typed URL was before.
         /// </summary>
         Task<SanityAssetUploadResult> UploadImageAssetAsync(Stream fileStream, string fileName, string contentType);
+
+        /// <summary>
+        /// Deletes a previously-uploaded image asset from Sanity, so removing
+        /// a hero/gallery image in the builder (or replacing it with another
+        /// drop) actually frees space in the Sanity project instead of
+        /// leaving an orphaned asset behind. Accepts the asset's public CDN
+        /// url (the only thing the content block ever stores) — the asset id
+        /// is derived from it. Only urls under the configured
+        /// Sanity:ProjectId/Dataset are accepted.
+        /// </summary>
+        Task<SanityAssetDeleteResult> DeleteImageAssetAsync(string assetUrl);
     }
 }

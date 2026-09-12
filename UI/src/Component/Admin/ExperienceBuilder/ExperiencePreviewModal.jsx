@@ -6,15 +6,19 @@
 // through the exact same ExperiencePageView component the public site uses —
 // so this IS the page, including the cart widget, hero image placement, etc.
 // The only thing swapped out is the "Book Now" hand-off, which is inert here
-// (previewMode) since a still-being-edited experience has no id/price/form
-// yet — those are Admin-only, set after approval.
+// (previewMode). Payment/capacity/registration-type/slots are read from the
+// SAME Admin-only state the canvas's cart widget edits (AdminExperienceBuilder)
+// — an Employee never sees a value there other than the defaults it starts at.
 
 import React from "react";
 import { experienceBuilderConfig } from "../../Config/experienceBuilder.config";
 import { experiencePublicConfig } from "../../Config/experiencePublic.config";
 import ExperiencePageView from "../../Sections/ExperiencePageView";
 
-export default function ExperiencePreviewModal({ title, experienceType, blocks, startDate, endDate, onClose }) {
+export default function ExperiencePreviewModal({
+  title, experienceType, blocks, startDate, endDate, bookingEndDate, onClose,
+  requiresPayment, price, currency, capacityTotal, registrationType, slots,
+}) {
   const { theme, content } = experienceBuilderConfig;
 
   // Same shape ExperienceDetail.jsx gets from GET /api/experiences/public/{id}
@@ -27,11 +31,14 @@ export default function ExperiencePreviewModal({ title, experienceType, blocks, 
     contentBlocks: blocks,
     startDate: startDate || null,
     endDate: endDate || null,
-    capacityRemaining: null,
-    capacityTotal: null, // unlimited — capacity isn't set until Admin approval
-    requiresPayment: false, // price isn't set until Admin approval
-    price: 0,
-    currency: "INR",
+    bookingEndDate: bookingEndDate || null,
+    capacityRemaining: capacityTotal === "" || capacityTotal == null ? null : Number(capacityTotal),
+    capacityTotal: capacityTotal === "" || capacityTotal == null ? null : Number(capacityTotal),
+    requiresPayment: Boolean(requiresPayment),
+    price: requiresPayment ? Number(price) || 0 : 0,
+    currency: currency || "INR",
+    registrationType: registrationType || "Individual",
+    slots: slots || [],
     bookingEnabled: true,
     linkedFormSlug: null,
   };

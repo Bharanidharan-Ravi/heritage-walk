@@ -49,19 +49,26 @@ export const experienceBuilderConfig = {
     // an Overview/gallery/location flow, a free block stream, and a cart
     // skeleton docked on the side. These are the click-to-add prompts for
     // that layout's dedicated (non-draggable, one-per-page) slots.
-    addHeroImageLabel: "+ Add hero image",
+    addHeroImageLabel: "Drop an image here, or click to add hero image",
     addGalleryLabel: "+ Add gallery",
     addShortDescriptionLabel: "+ Add short description",
     addFullDescriptionLabel: "+ Add full description",
     addLocationLabel: "+ Add location",
     addMeetingPointLabel: "+ Add meeting point",
-    emptyHeroHint: "Click, then drag & drop or browse for an image in the panel on the right →",
+    emptyHeroHint: "Drag & drop an image directly here, or browse in the panel on the right →",
     emptyShortDescriptionHint: "Click to write a short description…",
     emptyFullDescriptionHint: "Click to write the full description…",
     emptyGalleryHint: "No images yet — click, then drag & drop or browse for some in the panel →",
     emptyLocationHint: "Not set — click, then fill it in on the right →",
     cartSkeletonTitle: "Booking widget",
-    cartSkeletonNote: "Visitors pick Individual/Group + a ticket count here. Price & capacity are set by an Admin after approval.",
+    cartSkeletonNote: "Visitors pick Individual/Group + a ticket count here. Price & capacity are set by an Admin.",
+
+    // Schedule dates used to live in their own top toolbar/canvas slot; now
+    // part of the cart widget's editor (ExperienceBlockSettings's CartEditor)
+    // since which date(s) apply depends on Registration type, right there.
+    startDateLabel: "Start date",
+    endDateLabel: "End date",
+    bookingEndDateLabel: "Booking end date",
   },
 };
 

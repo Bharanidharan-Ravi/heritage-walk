@@ -215,7 +215,14 @@ function BookingCard({ experience, theme, content, previewMode }) {
   const soldOut = !unlimited && spots <= 0;
   const maxQty = unlimited ? 50 : Math.max(1, spots);
 
-  const [regType, setRegType] = useState("Individual");
+  // Which toggle(s) an Admin allowed — set from the Experience Builder's cart
+  // widget (Cart & payment editor). Falls back to "Individual", same default
+  // the backend enum itself uses, for anything saved before this field existed.
+  const registrationType = experience.registrationType || "Individual";
+  const allowIndividual = registrationType !== "Group";
+  const allowGroup = registrationType !== "Individual";
+
+  const [regType, setRegType] = useState(allowIndividual ? "Individual" : "Group");
   const [qty, setQty] = useState(1);
 
   // Picking "Individual" pins the count to 1, matching what "Individual"
@@ -246,13 +253,15 @@ function BookingCard({ experience, theme, content, previewMode }) {
 
       {/* Cart widget: Individual/Group + ticket stepper. Fully interactive
           even in preview, so an admin can see exactly how a visitor will use
-          it before the experience is published. */}
+          it before the experience is published. Only the toggle(s) allowed
+          by the Admin's Registration type setting render — a single allowed
+          option shows as one non-toggling pill instead of a 2-up grid. */}
       <div className="space-y-5 pb-6 border-b" style={{ borderColor: theme.borderColor }}>
         <div>
           <span className="text-[10px] uppercase tracking-widest block mb-2 font-bold" style={{ color: theme.mutedColor }}>{content.registrationTypeLabel}</span>
-          <div className="grid grid-cols-2 gap-2">
-            <SegmentButton active={regType === "Individual"} onClick={selectIndividual} theme={theme}>{content.individualLabel}</SegmentButton>
-            <SegmentButton active={regType === "Group"} onClick={selectGroup} theme={theme}>{content.groupLabel}</SegmentButton>
+          <div className={`grid gap-2 ${allowIndividual && allowGroup ? "grid-cols-2" : "grid-cols-1"}`}>
+            {allowIndividual && <SegmentButton active={regType === "Individual"} onClick={selectIndividual} theme={theme}>{content.individualLabel}</SegmentButton>}
+            {allowGroup && <SegmentButton active={regType === "Group"} onClick={selectGroup} theme={theme}>{content.groupLabel}</SegmentButton>}
           </div>
         </div>
 

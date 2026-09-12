@@ -42,6 +42,12 @@ namespace ArchaeoTrails.Application.Features.Experiences
         public int? CapacityTotal { get; set; }
 
         public Guid? LinkedFormTemplateId { get; set; }
+
+        /// <summary>"Individual" | "Group" | "Both" (case-insensitive).</summary>
+        public string RegistrationType { get; set; } = "Individual";
+
+        /// <summary>Bookable dates for Group registration — ignored when RegistrationType is Individual.</summary>
+        public List<DateTime> Slots { get; set; } = new();
     }
 
     public class RequestChangesRequest
@@ -67,6 +73,13 @@ namespace ArchaeoTrails.Application.Features.Experiences
         /// <summary>Null = unlimited.</summary>
         public int? CapacityTotal { get; set; }
         public bool BookingEnabled { get; set; }
+
+        // Carried through (not edited) by SetPaymentModal on this list page —
+        // it PUTs the whole SetExperiencePaymentRequest, so these need to come
+        // back with the row or a price-only save from there would silently
+        // reset registration type/slots to the default.
+        public string RegistrationType { get; set; } = "Individual";
+        public List<DateTime> Slots { get; set; } = new();
 
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
@@ -101,6 +114,8 @@ namespace ArchaeoTrails.Application.Features.Experiences
         public int? CapacityTotal { get; set; }
         public int? CapacityRemaining { get; set; }
         public Guid? LinkedFormTemplateId { get; set; }
+        public string RegistrationType { get; set; } = "Individual";
+        public List<DateTime> Slots { get; set; } = new();
 
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
@@ -169,6 +184,11 @@ namespace ArchaeoTrails.Application.Features.Experiences
         public string Currency { get; set; } = "INR";
         public int? CapacityTotal { get; set; }
         public int? CapacityRemaining { get; set; }
+
+        /// <summary>"Individual" | "Group" | "Both" — which option(s) the cart offers.</summary>
+        public string RegistrationType { get; set; } = "Individual";
+        /// <summary>Bookable dates for Group registration; empty when RegistrationType is Individual.</summary>
+        public List<DateTime> Slots { get; set; } = new();
 
         /// <summary>true once a registration form is linked and still accepting bookings (not past BookingEndDate, seats left).</summary>
         public bool BookingEnabled { get; set; }

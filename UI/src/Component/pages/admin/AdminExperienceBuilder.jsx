@@ -5,15 +5,20 @@
 // useExperienceBuilder hook (see its header for why). Handles both create
 // (/admin/experiences/new/:type) and edit (/admin/experiences/:id/edit).
 //
-// Price/currency/capacity are deliberately NOT editable here — those stay
-// Admin-only, configured from the Experiences list page after approval
-// (spec §18/§25 — PUT /api/experiences/{id}/payment).
+// Price/currency/capacity/registration-type/slots are Admin-only, saved via
+// their OWN endpoint (PUT /api/experiences/{id}/payment) instead of the
+// Save-draft/Submit actions above — same split as the Experiences list
+// page's "Set Payment" modal, just relocated onto the canvas's cart widget
+// (see the `isAdmin` gate on ExperienceCanvas/ExperienceBlockSettings) so an
+// Admin building an experience doesn't have to leave the Builder to price it.
+// An Employee sees the exact same non-interactive cart skeleton as before.
 
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAdminAuth } from "../../Admin/AuthContext";
 import { adminApi } from "../../Admin/adminApi";
+import { adminConfig } from "../../Config/admin.config";
 import { experienceBuilderConfig, EXPERIENCE_TYPES } from "../../Config/experienceBuilder.config";
 import { adminUi } from "../../Config/adminUi.config";
 import { useExperienceBuilder } from "../../Admin/ExperienceBuilder/useExperienceBuilder";
@@ -24,7 +29,8 @@ import ExperiencePreviewModal from "../../Admin/ExperienceBuilder/ExperiencePrev
 import { qk } from "../../../queryKeys";
 
 export default function AdminExperienceBuilder() {
-  const { token } = useAdminAuth();
+  const { token, user } = useAdminAuth();
+  const isAdmin = user?.role === adminConfig.roles.ADMIN;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const params = useParams();
@@ -44,6 +50,19 @@ export default function AdminExperienceBuilder() {
   const [saveError, setSaveError] = useState("");
   const [showErrors, setShowErrors] = useState(false);
   const [experienceId, setExperienceId] = useState(params.id || null);
+
+  // ---- Admin-only cart config (payment/capacity/registration type/slots) —
+  // loaded from `detail` below, saved through its own endpoint, see the
+  // header comment. Untouched by (and never sent from) Save draft/Submit.
+  const [linkedFormTemplateId, setLinkedFormTemplateId] = useState(null);
+  const [requiresPayment, setRequiresPayment] = useState(false);
+  const [price, setPrice] = useState("");
+  const [currency, setCurrency] = useState("INR");
+  const [capacityTotal, setCapacityTotal] = useState("");
+  const [registrationType, setRegistrationType] = useState("Individual");
+  const [slots, setSlots] = useState([]);
+  const [cartSaving, setCartSaving] = useState(false);
+  const [cartError, setCartError] = useState("");
 
   const {
     data: detail,
@@ -65,6 +84,13 @@ export default function AdminExperienceBuilder() {
     setExperienceType((detail.type || "walk").toLowerCase());
     setStatus(detail.status);
     builder.loadExisting(detail);
+    setLinkedFormTemplateId(detail.linkedFormTemplateId ?? null);
+    setRequiresPayment(detail.requiresPayment);
+    setPrice(detail.requiresPayment ? String(detail.price) : "");
+    setCurrency(detail.currency || "INR");
+    setCapacityTotal(detail.capacityTotal ?? "");
+    setRegistrationType(detail.registrationType || "Individual");
+    setSlots((detail.slots || []).map((d) => d.slice(0, 10)));
     setHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail]);
@@ -129,6 +155,52 @@ export default function AdminExperienceBuilder() {
     }
   };
 
+  // Admin-only. The Cart & payment panel also carries Start/End/Booking-end
+  // date now (moved out of the canvas — they only mean anything in relation
+  // to Registration type, which lives here too) — but those three are still
+  // saved through the DRAFT endpoint (Create/Update), not PUT .../payment,
+  // so "Save cart settings" has to hit both: (re)save the draft with the
+  // builder's current state first (creating it if it has no id yet — same
+  // request Save Draft itself sends, so the Admin never has to leave this
+  // panel to save one first), then save payment/registration/slots.
+  // `linkedFormTemplateId` is carried through untouched: this editor never
+  // offers a form picker (that stays on the Experiences list page's own "Set
+  // Payment" modal), so resaving here must not clobber whatever's linked.
+  const handleSaveCart = async () => {
+    if (builder.validationErrors.length > 0) {
+      setShowErrors(true);
+      setCartError("Give the experience a title and at least one block first.");
+      return;
+    }
+    setCartSaving(true);
+    setCartError("");
+    try {
+      let id = experienceId;
+      if (id) {
+        await adminApi.updateExperience(token, id, builder.toSaveRequest());
+      } else {
+        const result = await adminApi.createExperience(token, { type: experienceType, ...builder.toSaveRequest() });
+        id = result.id;
+        setExperienceId(id);
+        navigate(`/admin/experiences/${id}/edit`, { replace: true });
+      }
+      await adminApi.setExperiencePayment(token, id, {
+        requiresPayment,
+        price: requiresPayment ? Number(price) || 0 : 0,
+        currency,
+        capacityTotal: capacityTotal === "" ? null : Number(capacityTotal),
+        linkedFormTemplateId,
+        registrationType,
+        slots: registrationType === "Individual" ? [] : slots,
+      });
+      invalidateAfterSave(id);
+    } catch (err) {
+      setCartError(err.message || "Could not save the cart settings.");
+    } finally {
+      setCartSaving(false);
+    }
+  };
+
   const canSubmit = status === "Draft" || status === "ChangesRequested";
 
   if (loading || !hydrated) {
@@ -141,8 +213,9 @@ export default function AdminExperienceBuilder() {
   return (
     // Fixed height = the viewport minus AdminLayout's `p-4` (top+bottom = 2rem)
     // so this component owns its own scroll instead of the whole document:
-    // the header/date bar below stays pinned, and only the palette/canvas/
-    // settings grid (the "experience builder area") scrolls internally.
+    // the header below stays pinned, and only the palette/canvas/settings
+    // grid (the "experience builder area" — title and schedule dates included,
+    // as slots inside the canvas) scrolls internally.
     <div className="flex flex-col" style={{ height: "calc(100vh - 2rem)" }}>
       <div className="shrink-0">
         <header className="flex flex-wrap items-start justify-between gap-2 mb-3">
@@ -169,8 +242,6 @@ export default function AdminExperienceBuilder() {
           </div>
         </header>
 
-        <SettingsCard builder={builder} theme={theme} />
-
         {showErrors && builder.validationErrors.length > 0 && (
           <ul className={`mb-3 rounded-lg border ${adminUi.pad.panel} ${adminUi.text.body} space-y-0.5`} style={{ borderColor: theme.dangerColor, color: theme.dangerColor }}>
             {builder.validationErrors.map((e) => <li key={e}>• {e}</li>)}
@@ -191,17 +262,32 @@ export default function AdminExperienceBuilder() {
           <ExperienceCanvas
             experienceType={experienceType}
             title={builder.title}
+            onTitleChange={builder.setTitle}
+            startDate={builder.startDate}
+            endDate={builder.endDate}
+            bookingEndDate={builder.bookingEndDate}
+            onStartDateChange={builder.setStartDate}
+            onEndDateChange={builder.setEndDate}
+            onBookingEndDateChange={builder.setBookingEndDate}
             blocks={builder.blocks}
             selectedId={builder.selectedId}
             onSelect={builder.setSelectedId}
             onMove={builder.moveBlock}
             onNudge={builder.nudgeBlock}
             onInsertNew={builder.addBlock}
+            onUpdateBlock={builder.updateBlock}
             onRemove={builder.removeBlock}
             onDuplicate={builder.duplicateBlock}
             drag={drag}
             onDragEnd={() => setDrag(null)}
             onDragStartMove={(index) => setDrag({ kind: "move", index })}
+            isAdmin={isAdmin}
+            requiresPayment={requiresPayment}
+            price={price}
+            currency={currency}
+            capacityTotal={capacityTotal}
+            registrationType={registrationType}
+            slots={slots}
           />
 
           <ExperienceBlockSettings
@@ -209,6 +295,32 @@ export default function AdminExperienceBuilder() {
             block={builder.selectedBlock}
             onChange={builder.updateBlock}
             onRemove={builder.removeBlock}
+            selectedId={builder.selectedId}
+            title={builder.title}
+            onTitleChange={builder.setTitle}
+            startDate={builder.startDate}
+            endDate={builder.endDate}
+            bookingEndDate={builder.bookingEndDate}
+            onStartDateChange={builder.setStartDate}
+            onEndDateChange={builder.setEndDate}
+            onBookingEndDateChange={builder.setBookingEndDate}
+            isAdmin={isAdmin}
+            hasExperienceId={Boolean(experienceId)}
+            requiresPayment={requiresPayment}
+            onRequiresPaymentChange={setRequiresPayment}
+            price={price}
+            onPriceChange={setPrice}
+            currency={currency}
+            onCurrencyChange={setCurrency}
+            capacityTotal={capacityTotal}
+            onCapacityTotalChange={setCapacityTotal}
+            registrationType={registrationType}
+            onRegistrationTypeChange={setRegistrationType}
+            slots={slots}
+            onSlotsChange={setSlots}
+            onSaveCart={handleSaveCart}
+            cartSaving={cartSaving}
+            cartError={cartError}
           />
         </div>
       </div>
@@ -220,43 +332,16 @@ export default function AdminExperienceBuilder() {
           blocks={builder.blocks}
           startDate={builder.startDate}
           endDate={builder.endDate}
+          bookingEndDate={builder.bookingEndDate}
+          requiresPayment={requiresPayment}
+          price={price}
+          currency={currency}
+          capacityTotal={capacityTotal}
+          registrationType={registrationType}
+          slots={slots}
           onClose={() => setShowPreview(false)}
         />
       )}
-    </div>
-  );
-}
-
-/** Title + schedule dates. No price/capacity — those are Admin-only, set from the list page. */
-function SettingsCard({ builder, theme }) {
-  const { text, control, pad } = adminUi;
-
-  return (
-    <div className={`rounded-lg border ${pad.card} mb-3`} style={{ backgroundColor: theme.panelBackground, borderColor: theme.borderColor }}>
-      <input
-        placeholder="Experience title"
-        value={builder.title}
-        onChange={(e) => builder.setTitle(e.target.value)}
-        className={`${control.input} text-[14px] font-semibold`}
-      />
-
-      <div className="mt-2.5 pt-2.5 border-t grid grid-cols-1 sm:grid-cols-3 gap-2" style={{ borderColor: theme.borderColor }}>
-        <div>
-          <label className={control.label}>Start date</label>
-          <input type="date" value={builder.startDate} onChange={(e) => builder.setStartDate(e.target.value)} className={control.inputSm} />
-        </div>
-        <div>
-          <label className={control.label}>End date</label>
-          <input type="date" value={builder.endDate} onChange={(e) => builder.setEndDate(e.target.value)} className={control.inputSm} />
-        </div>
-        <div>
-          <label className={control.label}>Booking end date</label>
-          <input type="date" value={builder.bookingEndDate} onChange={(e) => builder.setBookingEndDate(e.target.value)} className={control.inputSm} />
-        </div>
-      </div>
-      <p className={`${text.body} mt-1.5 opacity-60`}>
-        Payment, capacity and the registration form are configured by an Admin after approval.
-      </p>
     </div>
   );
 }

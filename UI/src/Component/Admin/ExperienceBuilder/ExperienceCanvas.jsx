@@ -20,32 +20,50 @@
 // Admin approval — see AdminExperienceBuilder.jsx), so its "skeleton" here is
 // a static, non-interactive placeholder, not a real BookingCard.
 
-import React, { useState } from "react";
+import React, { useLayoutEffect, useRef, useState } from "react";
 import { experienceBuilderConfig, blockMetaFor } from "../../Config/experienceBuilder.config";
 import { experiencePublicConfig } from "../../Config/experiencePublic.config";
 import { adminUi } from "../../Config/adminUi.config";
 import FieldIcon from "../../Config/fieldIcons";
 import { BlockSection } from "../../Sections/ExperiencePageView";
 import { hasValue, formatSimpleValue } from "../../Sections/experienceBlockHelpers";
+import { useExperienceImageUpload, validateImageFile } from "./imageUpload";
 
 const { theme: chromeTheme, content: builderContent } = experienceBuilderConfig; // admin dark chrome — toolbars only
 const { theme: pageTheme, content: pageContent, sectionLabels, layoutKeys, positiveListKeys, negativeListKeys } = experiencePublicConfig; // the real page's own look
 const { text, control } = adminUi;
 
+// Sentinel `selectedId` values for the two experience-level fields (title,
+// schedule dates) that live outside the block array — set once per
+// experience, not draggable/removable — but are still selectable/editable
+// from both the canvas (inline) and the sidebar (ExperienceBlockSettings),
+// same as any real content block.
+export const TITLE_BLOCK_ID = "__title__";
+export const CART_BLOCK_ID = "__cart__";
+
 export default function ExperienceCanvas({
   experienceType,
   title,
+  onTitleChange,
   blocks,
   selectedId,
   onSelect,
   onMove,
   onNudge,
   onInsertNew,
+  onUpdateBlock,
   onRemove,
   onDuplicate,
   drag,
   onDragEnd,
   onDragStartMove,
+  isAdmin,
+  requiresPayment,
+  price,
+  currency,
+  capacityTotal,
+  registrationType,
+  slots,
 }) {
   const [dropIndex, setDropIndex] = useState(null);
   const clearDrop = () => setDropIndex(null);
@@ -120,9 +138,8 @@ export default function ExperienceCanvas({
             <p className="uppercase tracking-widest text-xs font-bold mb-2" style={{ color: pageTheme.accentColor }}>
               {typeLabel}
             </p>
-            <h1 className="text-3xl md:text-4xl font-serif font-medium mb-4 leading-tight">
-              {title || "Untitled experience"}
-            </h1>
+
+            <EditableTitle title={title} selected={selectedId === TITLE_BLOCK_ID} onSelect={() => onSelect(TITLE_BLOCK_ID)} onChange={onTitleChange} />
 
             {chips.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-6">
@@ -143,22 +160,18 @@ export default function ExperienceCanvas({
               </div>
             )}
 
-            {/* HERO */}
-            {hero ? (
-              <Slot selected={hero.id === selectedId} onClick={() => onSelect(hero.id)} className="mb-8">
-                {hero.value ? (
-                  <div className="rounded-2xl overflow-hidden shadow-xl">
-                    <img src={hero.value} alt={title} className="w-full h-64 md:h-80 object-cover" />
-                  </div>
-                ) : (
-                  <EmptyHint theme={pageTheme} height="h-64 md:h-80">{builderContent.emptyHeroHint}</EmptyHint>
-                )}
-              </Slot>
-            ) : (
-              <AddSlot theme={pageTheme} onClick={() => onInsertNew(layoutKeys.heroImage)} className="mb-8 h-40">
-                {builderContent.addHeroImageLabel}
-              </AddSlot>
-            )}
+            {/* HERO — a file dragged from the OS straight onto this slot uploads
+                and sets it directly, whether or not the hero block exists yet;
+                clicking still selects it for the sidebar's own dropzone/label
+                editor, same as before. */}
+            <HeroImageSlot
+              hero={hero}
+              title={title}
+              selected={hero ? hero.id === selectedId : false}
+              onSelect={() => (hero ? onSelect(hero.id) : onInsertNew(layoutKeys.heroImage))}
+              onInsert={(url) => onInsertNew(layoutKeys.heroImage, undefined, { value: url })}
+              onUpdate={(url) => onUpdateBlock(hero.id, { value: url })}
+            />
 
             {/* OVERVIEW (short + full description) */}
             <div className="mb-8">
@@ -292,9 +305,26 @@ export default function ExperienceCanvas({
             </div>
           </div>
 
-          {/* RIGHT: cart skeleton — not a content block, so not editable here */}
+          {/* RIGHT: cart skeleton — an Employee gets the same static,
+              non-interactive placeholder as always (price/capacity aren't
+              theirs to set); an Admin gets a live summary that's selectable,
+              same as any other slot, opening the full editor in the sidebar. */}
           <div className="lg:w-1/3 w-full">
-            <CartSkeleton />
+            {isAdmin ? (
+              <Slot selected={selectedId === CART_BLOCK_ID} onClick={() => onSelect(CART_BLOCK_ID)}>
+                <CartSkeleton
+                  requiresPayment={requiresPayment}
+                  price={price}
+                  currency={currency}
+                  capacityTotal={capacityTotal}
+                  registrationType={registrationType}
+                  slots={slots}
+                  editable
+                />
+              </Slot>
+            ) : (
+              <CartSkeleton />
+            )}
           </div>
         </div>
       </div>
@@ -302,8 +332,10 @@ export default function ExperienceCanvas({
   );
 }
 
-/** A selectable, non-draggable slot for a fixed-position block that already exists. */
-function Slot({ selected, onClick, className = "", children }) {
+/** A selectable, non-draggable slot for a fixed-position block that already
+ *  exists. `dragOver` (plus any `onDrag*`/`onDrop` passed through) lets a
+ *  slot double as an OS-file drop target — see HeroImageSlot. */
+function Slot({ selected, onClick, className = "", children, dragOver, ...dragHandlers }) {
   return (
     <div
       role="button"
@@ -315,11 +347,141 @@ function Slot({ selected, onClick, className = "", children }) {
           onClick();
         }
       }}
+      {...dragHandlers}
       className={`rounded-xl cursor-pointer transition-shadow ${className}`}
-      style={{ boxShadow: selected ? `0 0 0 2px ${pageTheme.accentColor}` : `0 0 0 1px transparent` }}
+      style={{ boxShadow: selected || dragOver ? `0 0 0 2px ${pageTheme.accentColor}` : `0 0 0 1px transparent` }}
     >
       {children}
     </div>
+  );
+}
+
+/** The page's real <h1> title, directly typeable in place — click puts a
+ *  caret in it (native contentEditable), typing calls onChange immediately.
+ *  The sidebar (ExperienceBlockSettings) edits the exact same `title` state
+ *  via TITLE_BLOCK_ID, so either surface works.
+ *
+ *  Deliberately NOT rendered as `{title}` React children: a controlled
+ *  contentEditable re-renders its text node on every keystroke, which resets
+ *  the caret to the start and scrambles typing (e.g. "test" -> "tset"). The
+ *  DOM owns the live text instead — onInput reports it up without touching
+ *  the DOM back — and this effect only writes into it when `title` changed
+ *  from OUTSIDE (sidebar edit, loading a saved experience), not from our own
+ *  typing, which is why it's skipped whenever the text already matches. */
+function EditableTitle({ title, selected, onSelect, onChange }) {
+  const ref = useRef(null);
+
+  useLayoutEffect(() => {
+    if (ref.current && ref.current.textContent !== title) {
+      ref.current.textContent = title;
+    }
+  }, [title]);
+
+  return (
+    <div className="relative mb-4">
+      {!title && (
+        <span
+          className="absolute inset-0 text-3xl md:text-4xl font-serif font-medium leading-tight pointer-events-none select-none"
+          style={{ color: pageTheme.mutedColor }}
+        >
+          Untitled experience
+        </span>
+      )}
+      <h1
+        ref={ref}
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-label="Experience title"
+        onFocus={onSelect}
+        onInput={(e) => onChange(e.currentTarget.textContent)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.preventDefault(); // title stays single-line
+        }}
+        onPaste={(e) => {
+          e.preventDefault();
+          document.execCommand("insertText", false, e.clipboardData.getData("text/plain"));
+        }}
+        className="text-3xl md:text-4xl font-serif font-medium leading-tight outline-none rounded-md cursor-text -m-1 p-1"
+        style={{ boxShadow: selected ? `0 0 0 2px ${pageTheme.accentColor}` : `0 0 0 1px transparent` }}
+      />
+    </div>
+  );
+}
+
+/** Hero image slot — a real drop target for a file dragged in from the OS
+ *  (not just the palette's block-drag), whether or not the hero block has
+ *  been added yet. Clicking still selects the existing block for the
+ *  sidebar's own editor (label field, replace-via-browse). */
+function HeroImageSlot({ hero, title, selected, onSelect, onInsert, onUpdate }) {
+  const { upload, remove } = useExperienceImageUpload();
+  const [dragOver, setDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+
+  const isFileDrag = (e) => Array.from(e.dataTransfer?.types || []).includes("Files");
+
+  const handleFile = async (file) => {
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setError("");
+    setUploading(true);
+    try {
+      const result = await upload(file);
+      const previous = hero?.value;
+      if (hero) onUpdate(result.url);
+      else onInsert(result.url);
+      if (previous) remove(previous);
+    } catch (err) {
+      setError(err.message || "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <Slot
+      selected={selected}
+      onClick={onSelect}
+      className="mb-8"
+      dragOver={dragOver}
+      onDragOver={(e) => {
+        if (!isFileDrag(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOver(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false);
+      }}
+      onDrop={(e) => {
+        if (!isFileDrag(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOver(false);
+        const file = e.dataTransfer.files[0];
+        if (file) handleFile(file);
+      }}
+    >
+      {hero?.value ? (
+        <div className="rounded-2xl overflow-hidden shadow-xl relative">
+          <img src={hero.value} alt={title} className="w-full h-64 md:h-80 object-cover" />
+          {(uploading || dragOver) && (
+            <div className="absolute inset-0 grid place-items-center text-xs font-bold uppercase tracking-widest" style={{ backgroundColor: "rgba(20,28,38,0.6)", color: pageTheme.textColor }}>
+              {uploading ? "Uploading…" : "Drop to replace"}
+            </div>
+          )}
+        </div>
+      ) : (
+        <EmptyHint theme={pageTheme} height="h-64 md:h-80">
+          {uploading ? "Uploading…" : hero ? builderContent.emptyHeroHint : builderContent.addHeroImageLabel}
+        </EmptyHint>
+      )}
+      {error && <p className="text-xs mt-1.5 font-semibold" style={{ color: chromeTheme.dangerColor }}>{error}</p>}
+    </Slot>
   );
 }
 
@@ -423,25 +585,58 @@ function CardButton({ children, label, onClick, disabled, danger }) {
   );
 }
 
-/** Static, non-interactive stand-in for the real BookingCard — price/capacity
- *  aren't set until Admin approval, so there's nothing real to show yet; this
- *  just marks the spot so the canvas's proportions match the live page. */
-function CartSkeleton() {
-  return (
-    <div className="lg:sticky lg:top-4 rounded-3xl p-6 border-2 border-dashed" style={{ borderColor: pageTheme.borderColor, backgroundColor: pageTheme.cardBackground }}>
-      <span className="text-[10px] uppercase tracking-widest block mb-3 font-bold" style={{ color: pageTheme.mutedColor }}>
-        {builderContent.cartSkeletonTitle}
-      </span>
-      <div className="grid grid-cols-2 gap-2 mb-3 pointer-events-none opacity-50">
-        <div className="py-2 rounded-lg text-xs font-bold uppercase tracking-widest text-center border" style={{ borderColor: pageTheme.borderColor, color: pageTheme.mutedColor }}>
-          {pageContent.individualLabel}
+/** Static, non-interactive stand-in for the real BookingCard shown to an
+ *  Employee — price/capacity/registration type aren't theirs to set, so
+ *  there's nothing real to show yet; this just marks the spot so the
+ *  canvas's proportions match the live page.
+ *
+ *  `editable` swaps that placeholder for an Admin-facing live summary of
+ *  whatever's currently configured (still read-only HERE — clicking it
+ *  selects CART_BLOCK_ID and the actual editing happens in the sidebar's
+ *  CartEditor, same as every other slot on this canvas). */
+function CartSkeleton({ editable, requiresPayment, price, currency, capacityTotal, registrationType, slots }) {
+  if (!editable) {
+    return (
+      <div className="lg:sticky lg:top-4 rounded-3xl p-6 border-2 border-dashed" style={{ borderColor: pageTheme.borderColor, backgroundColor: pageTheme.cardBackground }}>
+        <span className="text-[10px] uppercase tracking-widest block mb-3 font-bold" style={{ color: pageTheme.mutedColor }}>
+          {builderContent.cartSkeletonTitle}
+        </span>
+        <div className="grid grid-cols-2 gap-2 mb-3 pointer-events-none opacity-50">
+          <div className="py-2 rounded-lg text-xs font-bold uppercase tracking-widest text-center border" style={{ borderColor: pageTheme.borderColor, color: pageTheme.mutedColor }}>
+            {pageContent.individualLabel}
+          </div>
+          <div className="py-2 rounded-lg text-xs font-bold uppercase tracking-widest text-center border" style={{ borderColor: pageTheme.borderColor, color: pageTheme.mutedColor }}>
+            {pageContent.groupLabel}
+          </div>
         </div>
-        <div className="py-2 rounded-lg text-xs font-bold uppercase tracking-widest text-center border" style={{ borderColor: pageTheme.borderColor, color: pageTheme.mutedColor }}>
-          {pageContent.groupLabel}
-        </div>
+        <div className="h-10 rounded-xl mb-4 opacity-30" style={{ backgroundColor: pageTheme.borderColor }} />
+        <p className="text-xs" style={{ color: pageTheme.mutedColor }}>{builderContent.cartSkeletonNote}</p>
       </div>
-      <div className="h-10 rounded-xl mb-4 opacity-30" style={{ backgroundColor: pageTheme.borderColor }} />
-      <p className="text-xs" style={{ color: pageTheme.mutedColor }}>{builderContent.cartSkeletonNote}</p>
+    );
+  }
+
+  const registrationLabel = { Individual: "Individual only", Group: "Group (private) only", Both: "Individual + Group" }[registrationType] || registrationType;
+
+  return (
+    <div className="lg:sticky lg:top-4 rounded-3xl p-6 border-2" style={{ borderColor: pageTheme.borderColor, backgroundColor: pageTheme.cardBackground }}>
+      <span className="text-[10px] uppercase tracking-widest block mb-3 font-bold" style={{ color: pageTheme.accentColor }}>
+        {builderContent.cartSkeletonTitle} — click to edit
+      </span>
+      <div className="space-y-2.5">
+        <SummaryRow label="Price" value={requiresPayment ? `${currency} ${price || 0}` : "Free"} />
+        <SummaryRow label="Registration" value={registrationLabel} />
+        {registrationType !== "Individual" && <SummaryRow label="Slots" value={slots?.length ? `${slots.length} date${slots.length === 1 ? "" : "s"}` : "None set yet"} />}
+        <SummaryRow label="Capacity" value={capacityTotal === "" || capacityTotal == null ? "Unlimited" : capacityTotal} />
+      </div>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="font-bold uppercase tracking-widest text-[10px]" style={{ color: pageTheme.mutedColor }}>{label}</span>
+      <span className="font-medium">{String(value)}</span>
     </div>
   );
 }
