@@ -31,6 +31,7 @@ namespace ArchaeoTrails.Api.Controllers
         private readonly IQrCodeService _qrCodeService;
         private readonly IEmailService _emailService;
         private readonly IConfiguration _configuration;
+        private readonly IExperienceEventPublisher _experienceEvents;
 
         public FormsController(
             IFormTemplateRepository formTemplateRepository,
@@ -39,7 +40,8 @@ namespace ArchaeoTrails.Api.Controllers
             IPaymentService paymentService,
             IQrCodeService qrCodeService,
             IEmailService emailService,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IExperienceEventPublisher experienceEvents)
         {
             _formTemplateRepository = formTemplateRepository;
             _formSubmissionRepository = formSubmissionRepository;
@@ -48,6 +50,7 @@ namespace ArchaeoTrails.Api.Controllers
             _qrCodeService = qrCodeService;
             _emailService = emailService;
             _configuration = configuration;
+            _experienceEvents = experienceEvents;
         }
 
         // POST /api/forms  (Admin/Employee only)
@@ -209,6 +212,14 @@ namespace ArchaeoTrails.Api.Controllers
                         Message = "Sorry, this is fully booked."
                     });
                 }
+
+                // The atomic decrement already happened inside
+                // TryCreateWithCapacityAsync (see EfFormSubmissionRepository)
+                // — compute the new counts from the in-memory entity rather
+                // than re-reading SQL just to report them.
+                var remaining = linkedExperience.CapacityRemaining - 1;
+                var booked = linkedExperience.CapacityTotal - remaining;
+                await _experienceEvents.BookingUpdatedAsync(linkedExperience.Id, booked ?? 0, remaining);
             }
             else
             {

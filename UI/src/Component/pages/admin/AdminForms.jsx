@@ -2,45 +2,39 @@
 // dedicated builder at /admin/forms/new (AdminFormBuilder.jsx), which needs the
 // full width of the page for its three panes.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAdminAuth } from "../../Admin/AuthContext";
 import { adminApi } from "../../Admin/adminApi";
 import { adminConfig } from "../../Config/admin.config";
 import { adminUi } from "../../Config/adminUi.config";
 import FormShare from "../../Sections/FormShare";
+import { qk } from "../../../queryKeys";
 
 export default function AdminForms() {
   const { token } = useAdminAuth();
+  const queryClient = useQueryClient();
   const { theme } = adminConfig;
   const { text, control, table } = adminUi;
 
-  const [forms, setForms] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [sharingSlug, setSharingSlug] = useState(null);
+  const [error, setError] = useState("");
 
-  const loadForms = async () => {
-    setLoading(true);
-    try {
-      setForms(await adminApi.listForms(token));
-      setError("");
-    } catch (err) {
-      setError(err.message || "Could not load forms.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadForms();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const {
+    data: forms = [],
+    isLoading: loading,
+  } = useQuery({
+    queryKey: qk.forms(),
+    queryFn: () => adminApi.listForms(token),
+    staleTime: Infinity,
+    enabled: !!token,
+  });
 
   const handleToggleActive = async (id, isActive) => {
     try {
       await adminApi.updateFormStatus(token, id, !isActive);
-      await loadForms();
+      queryClient.invalidateQueries({ queryKey: qk.forms() });
     } catch (err) {
       setError(err.message || "Could not update form status.");
     }

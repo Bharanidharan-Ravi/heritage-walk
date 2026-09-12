@@ -1,21 +1,31 @@
 // src/Component/pages/admin/AdminExperiences.jsx
 //
 // The Experiences management page — replaces the old combined "Programs &
-// Forms" landing. Walk/Seminar/Course experiences, server-side paginated/
-// searched/sorted/filtered, with the Employee -> Admin approval workflow.
-// The existing Form Generator lives on unchanged at /admin/forms — this page
-// only *links* to a FormTemplate for booking (see SetPaymentModal).
+// Forms" landing. Walk/Seminar/Course experiences, with the Employee ->
+// Admin approval workflow. The existing Form Generator lives on unchanged at
+// /admin/forms — this page only *links* to a FormTemplate for booking (see
+// SetPaymentModal).
+//
+// Data fetching: TanStack Query caches ONE request per tab (the full result
+// set, staleTime: Infinity — see queryKeys.js). Type filter, search, sort and
+// pagination are all done client-side against that cached set (see the
+// `visible` useMemo below) — switching type/sort/page or typing a search term
+// never hits the network. Only switching tabs (Pending/Active/Closed) is a
+// real, server-scoped query (Employees are scoped to their own rows on
+// Pending) and reuses the cached result when you switch back.
 //
 // Fixed layout: header/tabs/toolbar/table-head/footer stay in place; only the
 // table body scrolls — see the h-[calc(100vh-2rem)] flex column below.
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useAdminAuth } from "../../Admin/AuthContext";
 import { adminApi } from "../../Admin/adminApi";
 import { adminConfig } from "../../Config/admin.config";
 import { adminUi } from "../../Config/adminUi.config";
 import CreateExperienceModal from "../../Admin/CreateExperienceModal";
+import { qk } from "../../../queryKeys";
 
 const TABS = [
   { key: "pending", label: "Pending" },
@@ -42,6 +52,23 @@ const SORTS = [
   { value: "startdate_desc", label: "Start date: latest" },
 ];
 
+// Client-side equivalents of the (still-available, now-unused-by-this-page)
+// server-side sort options — see ExperiencesController.ParseSort.
+const SORT_COMPARATORS = {
+  updated_desc: (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt),
+  title_asc: (a, b) => (a.title || "").localeCompare(b.title || ""),
+  title_desc: (a, b) => (b.title || "").localeCompare(a.title || ""),
+  price_asc: (a, b) => (a.price || 0) - (b.price || 0),
+  price_desc: (a, b) => (b.price || 0) - (a.price || 0),
+  bookingenddate_asc: (a, b) => dateOrMax(a.bookingEndDate) - dateOrMax(b.bookingEndDate),
+  bookingenddate_desc: (a, b) => dateOrMax(b.bookingEndDate) - dateOrMax(a.bookingEndDate),
+  startdate_asc: (a, b) => dateOrMax(a.startDate) - dateOrMax(b.startDate),
+  startdate_desc: (a, b) => dateOrMax(b.startDate) - dateOrMax(a.startDate),
+};
+function dateOrMax(v) {
+  return v ? new Date(v).getTime() : Number.MAX_SAFE_INTEGER;
+}
+
 const STATUS_BADGE = {
   Draft: { label: "DRAFT", bg: "rgba(244,241,234,0.12)", fg: "#F4F1EA" },
   ChangesRequested: { label: "CHANGES REQUESTED", bg: "rgba(224,108,108,0.15)", fg: "#E06C6C" },
@@ -57,9 +84,14 @@ const EMPTY_MESSAGE = {
   closed: "No closed experiences.",
 };
 
+// One request pulls every row for the tab; well above what any tab will
+// realistically hold. Filtering/sorting/paging then happens in JS below.
+const FETCH_ALL_PAGE_SIZE = 500;
+
 export default function AdminExperiences() {
   const { token, user } = useAdminAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { theme, roles } = adminConfig;
   const { text, control, table } = adminUi;
   const isAdmin = user?.role === roles.ADMIN;
@@ -72,17 +104,16 @@ export default function AdminExperiences() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  const [items, setItems] = useState([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [selected, setSelected] = useState(() => new Set());
   const [showCreate, setShowCreate] = useState(false);
   const [paymentTarget, setPaymentTarget] = useState(null);
   const [changesTarget, setChangesTarget] = useState(null);
   const [rowBusyId, setRowBusyId] = useState(null);
+  const [actionError, setActionError] = useState("");
 
-  // Debounce search -> reset to page 1 when it actually changes.
+  // Debounce search input -> reset to page 1 when it actually changes. Still
+  // client-side only (no network call), but avoids re-filtering on every
+  // keystroke.
   useEffect(() => {
     const t = setTimeout(() => {
       setSearch(searchInput.trim());
@@ -91,31 +122,43 @@ export default function AdminExperiences() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const result = await adminApi.listExperiences(token, { tab, type, search, sort, page, pageSize });
-      setItems(result.items);
-      setTotalCount(result.totalCount);
-      setError("");
-    } catch (err) {
-      setError(err.message || "Failed to load experiences.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    data,
+    isLoading: loading,
+    error: queryError,
+  } = useQuery({
+    queryKey: qk.experiencesList(tab),
+    queryFn: () => adminApi.listExperiences(token, { tab, page: 1, pageSize: FETCH_ALL_PAGE_SIZE }),
+    staleTime: Infinity,
+    enabled: !!token,
+  });
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, type, search, sort, page, pageSize]);
+  const error = actionError || (queryError ? queryError.message || "Failed to load experiences." : "");
+
+  // Client-side type filter -> search -> sort, over the tab's full cached set.
+  const filteredSorted = useMemo(() => {
+    let rows = data?.items || [];
+    if (type !== "all") rows = rows.filter((it) => (it.type || "").toLowerCase() === type);
+    if (search) {
+      const needle = search.toLowerCase();
+      rows = rows.filter((it) => (it.title || "").toLowerCase().includes(needle));
+    }
+    const cmp = SORT_COMPARATORS[sort] || SORT_COMPARATORS.updated_desc;
+    return [...rows].sort(cmp);
+  }, [data, type, search, sort]);
+
+  const totalCount = filteredSorted.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const clampedPage = Math.min(page, totalPages);
+  const items = useMemo(
+    () => filteredSorted.slice((clampedPage - 1) * pageSize, clampedPage * pageSize),
+    [filteredSorted, clampedPage, pageSize]
+  );
+  const rangeStart = totalCount === 0 ? 0 : (clampedPage - 1) * pageSize + 1;
+  const rangeEnd = Math.min(totalCount, clampedPage * pageSize);
 
   // Selection clears whenever the underlying result set could have changed.
-  useEffect(() => { setSelected(new Set()); }, [tab, type, search, page]);
-
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const rangeStart = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
-  const rangeEnd = Math.min(totalCount, page * pageSize);
+  useEffect(() => { setSelected(new Set()); }, [tab, type, search, clampedPage]);
 
   const allVisibleSelected = items.length > 0 && items.every((it) => selected.has(it.id));
   const toggleSelectAll = () => {
@@ -129,16 +172,23 @@ export default function AdminExperiences() {
     });
   };
 
-  const runRowAction = async (id, fn, errorMessage) => {
-    setRowBusyId(id);
-    try {
-      await fn();
-      await load();
-    } catch (err) {
-      setError(err.message || errorMessage);
-    } finally {
-      setRowBusyId(null);
-    }
+  // A status-changing action can move a row between tabs (e.g. Approve moves
+  // Pending -> Active). Rather than hand-patch every possibly-affected tab
+  // cache, invalidate the whole "experiences list" resource — that's at most
+  // 3 cached tab queries, never the full app cache.
+  const invalidateExperiences = () =>
+    queryClient.invalidateQueries({ queryKey: ["experiences", "list"] });
+
+  const rowActionMutation = useMutation({
+    mutationFn: ({ fn }) => fn(),
+    onMutate: ({ id }) => setRowBusyId(id),
+    onError: (err, { errorMessage }) => setActionError(err.message || errorMessage),
+    onSuccess: () => { setActionError(""); invalidateExperiences(); },
+    onSettled: () => setRowBusyId(null),
+  });
+
+  const runRowAction = (id, fn, errorMessage) => {
+    rowActionMutation.mutate({ id, fn, errorMessage });
   };
 
   const closableSelected = useMemo(
@@ -147,16 +197,16 @@ export default function AdminExperiences() {
   );
 
   const handleBulkClose = async () => {
-    setError("");
+    setActionError("");
     for (const row of closableSelected) {
       try {
         await adminApi.closeExperience(token, row.id);
       } catch (err) {
-        setError(err.message || "Failed to close one or more experiences.");
+        setActionError(err.message || "Failed to close one or more experiences.");
       }
     }
     setSelected(new Set());
-    await load();
+    invalidateExperiences();
   };
 
   return (
@@ -276,7 +326,7 @@ export default function AdminExperiences() {
                 <ExperienceRow
                   key={row.id}
                   row={row}
-                  serial={(page - 1) * pageSize + i + 1}
+                  serial={(clampedPage - 1) * pageSize + i + 1}
                   selected={selected.has(row.id)}
                   onToggle={() => toggleRow(row.id)}
                   isAdmin={isAdmin}
@@ -310,11 +360,11 @@ export default function AdminExperiences() {
           >
             {[10, 25, 50].map((n) => <option key={n} value={n}>{n} / page</option>)}
           </select>
-          <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className={control.btnGhost} style={{ borderColor: theme.borderColor, color: theme.textColor }}>
+          <button type="button" disabled={clampedPage <= 1} onClick={() => setPage((p) => p - 1)} className={control.btnGhost} style={{ borderColor: theme.borderColor, color: theme.textColor }}>
             Previous
           </button>
-          <span className={text.body}>Page {page} of {totalPages}</span>
-          <button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className={control.btnGhost} style={{ borderColor: theme.borderColor, color: theme.textColor }}>
+          <span className={text.body}>Page {clampedPage} of {totalPages}</span>
+          <button type="button" disabled={clampedPage >= totalPages} onClick={() => setPage((p) => p + 1)} className={control.btnGhost} style={{ borderColor: theme.borderColor, color: theme.textColor }}>
             Next
           </button>
         </div>
@@ -326,7 +376,7 @@ export default function AdminExperiences() {
           row={paymentTarget}
           token={token}
           onClose={() => setPaymentTarget(null)}
-          onSaved={async () => { setPaymentTarget(null); await load(); }}
+          onSaved={async () => { setPaymentTarget(null); invalidateExperiences(); }}
         />
       )}
       {changesTarget && (
@@ -334,7 +384,7 @@ export default function AdminExperiences() {
           row={changesTarget}
           token={token}
           onClose={() => setChangesTarget(null)}
-          onSaved={async () => { setChangesTarget(null); await load(); }}
+          onSaved={async () => { setChangesTarget(null); invalidateExperiences(); }}
         />
       )}
     </div>

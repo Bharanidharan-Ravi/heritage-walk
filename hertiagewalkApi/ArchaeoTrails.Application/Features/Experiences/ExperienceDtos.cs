@@ -123,4 +123,60 @@ namespace ArchaeoTrails.Application.Features.Experiences
         public bool Success { get; set; }
         public string? Message { get; set; }
     }
+
+    // ---- Image upload (hero/gallery drop-zones) --------------------------------
+    // Response for POST /api/experiences/assets/image — Url is what actually gets
+    // stored on the imageUrl/gallery content block, same shape a hand-typed url
+    // used to be.
+
+    public class ImageAssetDto
+    {
+        public string Url { get; set; } = string.Empty;
+        public string AssetId { get; set; } = string.Empty;
+    }
+
+    // ---- Public (anonymous, Published-only) --------------------------------
+    // Consumed by the public marketing site's Experience listing/detail pages
+    // (see ExperienceDetail.jsx / ExperienceList.jsx). ContentBlocks is handed
+    // through as-is, same as ExperienceDetailDto — the frontend's
+    // experienceBuilder.config.jsx is still the only place block SHAPES are
+    // known, so this stays as block-agnostic as the authenticated DTOs.
+
+    public class PublicExperienceListItemDto
+    {
+        public Guid Id { get; set; }
+        public string Type { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public List<object> ContentBlocks { get; set; } = new();
+
+        public bool RequiresPayment { get; set; }
+        public decimal Price { get; set; }
+        public string Currency { get; set; } = "INR";
+
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+    }
+
+    public class PublicExperienceDetailDto
+    {
+        public Guid Id { get; set; }
+        public string Type { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public List<object> ContentBlocks { get; set; } = new();
+
+        public bool RequiresPayment { get; set; }
+        public decimal Price { get; set; }
+        public string Currency { get; set; } = "INR";
+        public int? CapacityTotal { get; set; }
+        public int? CapacityRemaining { get; set; }
+
+        /// <summary>true once a registration form is linked and still accepting bookings (not past BookingEndDate, seats left).</summary>
+        public bool BookingEnabled { get; set; }
+        /// <summary>Slug of the linked registration form — the public site links "Book Now" to /forms/{slug}.</summary>
+        public string? LinkedFormSlug { get; set; }
+
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public DateTime? BookingEndDate { get; set; }
+    }
 }

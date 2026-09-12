@@ -8,6 +8,8 @@ import BlogPost2 from './Component/Sections/BlogPost copy';
 import BlogList2 from './Component/Sections/BlogList copy';
 import WalkDetail from './Component/Sections/WalkDetail';
 import FormPage from './Component/Sections/FormPage'; // form-generator (dry scaffold, see docs/form-generator/MASTER_PROMPT.md)
+import ExperienceList from './Component/Sections/ExperienceList'; // public selection page for Experience Builder content
+import ExperienceDetail from './Component/Sections/ExperienceDetail'; // public detail + booking hand-off page
 import NewPrototype from './Component/pages/NewPrototype'; // immersive redesign prototype — throwaway, not linked from nav
 
 // --- Admin panel (Admin/Employee only — "User" role is reserved for a
@@ -40,6 +42,8 @@ function App() {
         <Route path="/about" element={<HeritageHome />} />
         <Route path="/walks" element={<HeritageHome />} />
         <Route path="/walks/:slug" element={<WalkDetail />} />
+        <Route path="/experiences" element={<ExperienceList />} />
+        <Route path="/experiences/:id" element={<ExperienceDetail />} />
         <Route path="/gallery" element={<HeritageHome />} />
         <Route path="/contact" element={<HeritageHome />} />
         <Route path="/blog/:slug" element={<BlogPost />} />

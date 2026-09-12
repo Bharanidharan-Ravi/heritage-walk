@@ -8,11 +8,13 @@
 // reset the password) later from the row's Credentials editor. Only the first
 // Admin is provisioned outside this page, by IdentitySeeder on the API.
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAdminAuth } from "../../Admin/AuthContext";
 import { adminApi } from "../../Admin/adminApi";
 import { adminConfig } from "../../Config/admin.config";
 import { adminUi } from "../../Config/adminUi.config";
+import { qk } from "../../../queryKeys";
 
 const ROLE_OPTIONS = [adminConfig.roles.ADMIN, adminConfig.roles.EMPLOYEE, adminConfig.roles.USER];
 
@@ -26,16 +28,14 @@ const EMPTY_CREATE_FORM = {
 
 export default function AdminUsers() {
   const { token, user: currentUser } = useAdminAuth();
+  const queryClient = useQueryClient();
   const { theme, users: copy } = adminConfig;
   const { text, control, table, pad } = adminUi;
-
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   const [form, setForm] = useState(EMPTY_CREATE_FORM);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
+  const [error, setError] = useState("");
 
   // Which row's credentials editor is open, and its draft. Only one at a time
   // — a rename/reset is a deliberate act, not something to fan out across rows.
@@ -45,22 +45,17 @@ export default function AdminUsers() {
   const [credError, setCredError] = useState("");
   const [credNotice, setCredNotice] = useState("");
 
-  const loadUsers = async () => {
-    setLoading(true);
-    try {
-      setUsers(await adminApi.listUsers(token));
-      setError("");
-    } catch (err) {
-      setError(err.message || "Could not load users.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    data: users = [],
+    isLoading: loading,
+  } = useQuery({
+    queryKey: qk.users(),
+    queryFn: () => adminApi.listUsers(token),
+    staleTime: Infinity,
+    enabled: !!token,
+  });
 
-  useEffect(() => {
-    loadUsers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const invalidateUsers = () => queryClient.invalidateQueries({ queryKey: qk.users() });
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -69,7 +64,7 @@ export default function AdminUsers() {
     try {
       await adminApi.createUser(token, form);
       setForm(EMPTY_CREATE_FORM);
-      await loadUsers();
+      invalidateUsers();
     } catch (err) {
       setCreateError(err.message || "Could not create account.");
     } finally {
@@ -122,7 +117,7 @@ export default function AdminUsers() {
             : "Password updated.")
       );
       closeCredentials();
-      await loadUsers();
+      invalidateUsers();
     } catch (err) {
       setCredError(err.message || "Could not update credentials.");
     } finally {
@@ -133,7 +128,7 @@ export default function AdminUsers() {
   const handleRoleChange = async (id, role) => {
     try {
       await adminApi.updateUserRole(token, id, role);
-      await loadUsers();
+      invalidateUsers();
     } catch (err) {
       setError(err.message || "Could not update role.");
     }
@@ -142,7 +137,7 @@ export default function AdminUsers() {
   const handleToggleActive = async (id, isActive) => {
     try {
       await adminApi.updateUserStatus(token, id, !isActive);
-      await loadUsers();
+      invalidateUsers();
     } catch (err) {
       setError(err.message || "Could not update status.");
     }

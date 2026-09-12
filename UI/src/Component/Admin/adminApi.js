@@ -52,6 +52,41 @@ async function request(path, { method = "GET", body, token } = {}) {
   return data;
 }
 
+// Separate from request() above — this one sends multipart/form-data (a real
+// file), so no "Content-Type: application/json" header and no JSON.stringify
+// body; the browser sets its own multipart boundary once `body` is a
+// FormData instance.
+async function uploadFile(path, token, file) {
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    // no JSON body — fine.
+  }
+
+  if (!response.ok) {
+    const message = data?.message || `Upload failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
+
+  return data;
+}
+
 export const adminApi = {
   // Accounts log in with their username (the API also accepts an email here
   // as a fallback for accounts created before usernames existed).
@@ -106,4 +141,10 @@ export const adminApi = {
     request(`/api/experiences/${id}/close`, { method: "POST", token }),
   retryExperienceSync: (token, id) =>
     request(`/api/experiences/${id}/sync-retry`, { method: "POST", token }),
+  // Hero/gallery images: the file is uploaded straight to Sanity's asset
+  // store (via the API, which holds the write token) and the response's
+  // public CDN url is what actually gets stored on the block — see
+  // ExperienceBlockSettings.jsx's image drop-zones.
+  uploadExperienceImage: (token, file) =>
+    uploadFile("/api/experiences/assets/image", token, file),
 };

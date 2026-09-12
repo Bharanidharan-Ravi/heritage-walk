@@ -17,6 +17,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAdminAuth } from "./AuthContext";
 import { adminConfig } from "../Config/admin.config";
 import { adminUi } from "../Config/adminUi.config";
+import { useExperienceRealtime } from "./useExperienceRealtime";
 
 const COLLAPSED_WIDTH = 56;
 const EXPANDED_WIDTH = 192;
@@ -29,10 +30,14 @@ const NAV_ITEMS = [
 ];
 
 export default function AdminLayout() {
-  const { user, logout } = useAdminAuth();
+  const { user, token, logout } = useAdminAuth();
   const navigate = useNavigate();
   const { theme, roles } = adminConfig;
   const { text } = adminUi;
+
+  // One shared SignalR connection for the whole authenticated admin tree —
+  // see useExperienceRealtime.js.
+  useExperienceRealtime(token);
 
   const [expanded, setExpanded] = useState(false);
   const width = expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH;

@@ -7,12 +7,25 @@
 // FAQ rows / nested modules — so a new block is catalogue config, never new
 // editor code.
 
-import React from "react";
+import React, { useRef, useState } from "react";
 import { experienceBuilderConfig, blockMetaFor } from "../../Config/experienceBuilder.config";
 import { adminUi } from "../../Config/adminUi.config";
+import { useAdminAuth } from "../AuthContext";
+import { adminApi } from "../adminApi";
 
 const { theme } = experienceBuilderConfig;
 const { text, control } = adminUi;
+
+// Mirrors the API's own allow-list/size cap (ExperiencesController.UploadImageAsset)
+// so a bad file is rejected instantly instead of round-tripping to the server.
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+function validateImageFile(file) {
+  if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) return "Only JPEG, PNG, WebP or GIF images are allowed.";
+  if (file.size > MAX_IMAGE_BYTES) return "Image is larger than 8MB.";
+  return null;
+}
 
 export default function ExperienceBlockSettings({ experienceType, block, onChange, onRemove }) {
   if (!block) {
@@ -99,18 +112,21 @@ function BlockValueEditor({ block, patch }) {
       );
 
     case "imageUrl":
+      return (
+        <Labelled label="Image">
+          <SingleImageDropzone value={block.value} onUploaded={(url) => patch({ value: url })} onRemove={() => patch({ value: "" })} />
+        </Labelled>
+      );
+
     case "videoUrl":
       return (
-        <Labelled label={block.shape === "imageUrl" ? "Image URL" : "Video URL"} help="Paste a URL for now — Sanity asset upload is a follow-up (TODO(experiences)).">
+        <Labelled label="Video URL">
           <input value={block.value} onChange={(e) => patch({ value: e.target.value })} placeholder="https://…" className={control.input} />
-          {block.shape === "imageUrl" && block.value && (
-            <img src={block.value} alt="" className="mt-1.5 max-h-24 rounded border" style={{ borderColor: theme.borderColor }} />
-          )}
         </Labelled>
       );
 
     case "gallery":
-      return <StringListEditor label="Image URLs" placeholder="https://…" items={block.items} onChange={(items) => patch({ items })} />;
+      return <GalleryDropzone items={block.items} onChange={(items) => patch({ items })} />;
 
     case "repeatableList":
       return <StringListEditor label="Items" placeholder="Add an item…" items={block.items} onChange={(items) => patch({ items })} />;
@@ -152,7 +168,7 @@ function AddRowButton({ onClick, children }) {
   );
 }
 
-/** Simple string rows — Highlights / Rules / Prohibited / What to Bring / Gallery URLs / etc. */
+/** Simple string rows — Highlights / Rules / Prohibited / What to Bring / etc. */
 function StringListEditor({ label, placeholder, items, onChange }) {
   const list = items || [];
   const setAt = (i, value) => onChange(list.map((v, idx) => (idx === i ? value : v)));
@@ -171,6 +187,154 @@ function StringListEditor({ label, placeholder, items, onChange }) {
         ))}
       </div>
       <AddRowButton onClick={add}>+ Add</AddRowButton>
+    </div>
+  );
+}
+
+/** Shared drag-and-drop/click-to-browse file surface. Fires onFiles(FileList)
+ *  — validation + the actual upload call stay with the caller (single image
+ *  vs. gallery upload different numbers of files and where the result goes). */
+function DropSurface({ multiple, uploading, error, onFiles, label, height = "h-24" }) {
+  const inputRef = useRef(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleFiles = (fileList) => {
+    if (!fileList || fileList.length === 0) return;
+    onFiles(fileList);
+  };
+
+  return (
+    <div>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          handleFiles(e.dataTransfer.files);
+        }}
+        className={`rounded-lg border-2 border-dashed grid place-items-center text-center px-3 cursor-pointer transition-colors ${height}`}
+        style={{
+          borderColor: dragOver ? theme.accentColor : theme.borderColor,
+          backgroundColor: dragOver ? "rgba(193, 157, 96, 0.08)" : "transparent",
+        }}
+      >
+        <p className={text.body} style={{ color: theme.mutedColor }}>
+          {uploading ? "Uploading…" : label || (multiple ? "Drag & drop images here, or click to browse" : "Drag & drop an image here, or click to browse")}
+        </p>
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={ACCEPTED_IMAGE_TYPES.join(",")}
+        multiple={multiple}
+        className="hidden"
+        onChange={(e) => {
+          handleFiles(e.target.files);
+          e.target.value = ""; // lets picking the same file twice re-fire onChange
+        }}
+      />
+      {error && <p className={control.help} style={{ color: theme.dangerColor }}>{error}</p>}
+    </div>
+  );
+}
+
+/** Hero-image-style single upload: drop/browse a file, it's pushed to Sanity's
+ *  asset store via the API, and the returned public CDN url becomes the
+ *  block's value — same storage shape as before, just no more hand-typed URL. */
+function SingleImageDropzone({ value, onUploaded, onRemove }) {
+  const { token } = useAdminAuth();
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleFiles = async (fileList) => {
+    const file = fileList[0];
+    if (!file) return;
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setError("");
+    setUploading(true);
+    try {
+      const result = await adminApi.uploadExperienceImage(token, file);
+      onUploaded(result.url);
+    } catch (err) {
+      setError(err.message || "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className={adminUi.stack.xs}>
+      {value && (
+        <div className="relative">
+          <img src={value} alt="" className="max-h-32 w-full object-cover rounded border" style={{ borderColor: theme.borderColor }} />
+          <button type="button" title="Remove" aria-label="Remove" onClick={onRemove} className={control.iconBtn} style={{ position: "absolute", top: 4, right: 4, color: theme.dangerColor, backgroundColor: theme.panelBackground }}>✕</button>
+        </div>
+      )}
+      <DropSurface multiple={false} uploading={uploading} error={error} onFiles={handleFiles} label={value ? "Drop a new image to replace it" : undefined} />
+    </div>
+  );
+}
+
+/** Gallery-style multi upload: drop/browse one or more files at once, each
+ *  uploaded to Sanity the same way as the hero image; resulting urls are
+ *  appended to `items` (still a plain array of url strings). */
+function GalleryDropzone({ items, onChange }) {
+  const { token } = useAdminAuth();
+  const list = items || [];
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleFiles = async (fileList) => {
+    const files = Array.from(fileList);
+    const validationError = files.map(validateImageFile).find(Boolean);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setError("");
+    setUploading(true);
+    try {
+      const results = await Promise.all(files.map((file) => adminApi.uploadExperienceImage(token, file)));
+      onChange([...list, ...results.map((r) => r.url)]);
+    } catch (err) {
+      setError(err.message || "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeAt = (i) => onChange(list.filter((_, idx) => idx !== i));
+
+  return (
+    <div>
+      <label className={control.label}>Gallery images</label>
+      {list.length > 0 && (
+        <div className="grid grid-cols-3 gap-1.5 mb-1.5">
+          {list.map((src, i) => (
+            <div key={i} className="relative">
+              <img src={src} alt="" className="w-full h-16 object-cover rounded border" style={{ borderColor: theme.borderColor }} />
+              <button type="button" title="Remove" aria-label="Remove" onClick={() => removeAt(i)} className={control.iconBtn} style={{ position: "absolute", top: 2, right: 2, color: theme.dangerColor, backgroundColor: theme.panelBackground }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <DropSurface multiple uploading={uploading} error={error} onFiles={handleFiles} height="h-20" />
     </div>
   );
 }

@@ -6,6 +6,7 @@
 
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAdminAuth } from "../../Admin/AuthContext";
 import { adminApi } from "../../Admin/adminApi";
 import { formBuilderConfig } from "../../Config/formBuilder.config";
@@ -16,10 +17,12 @@ import BuilderCanvas from "../../Admin/FormBuilder/BuilderCanvas";
 import FieldSettings from "../../Admin/FormBuilder/FieldSettings";
 import FormPreviewModal from "../../Admin/FormBuilder/FormPreviewModal";
 import FormShare from "../../Sections/FormShare";
+import { qk } from "../../../queryKeys";
 
 export default function AdminFormBuilder() {
   const { token } = useAdminAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { theme, content } = formBuilderConfig;
   const builder = useFormBuilder();
 
@@ -43,6 +46,7 @@ export default function AdminFormBuilder() {
     setSaveError("");
     try {
       const result = await adminApi.createForm(token, builder.toCreateRequest());
+      queryClient.invalidateQueries({ queryKey: qk.forms() });
       setPublishedSlug(result.slug);
     } catch (err) {
       setSaveError(err.message || "Could not publish the form.");

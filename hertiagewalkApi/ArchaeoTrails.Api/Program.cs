@@ -1,4 +1,6 @@
 using System.Text;
+using ArchaeoTrails.Api.Hubs;
+using ArchaeoTrails.Api.RealTime;
 using ArchaeoTrails.Application.Interfaces;
 using ArchaeoTrails.Domain.Constants;
 using ArchaeoTrails.Infrastructure.Data;
@@ -60,7 +62,16 @@ builder.Services.AddScoped<IQrCodeService, QrCodeService>();
 // see SanityContentService for the dry-scaffold behaviour until a real token
 // is added via dotnet user-secrets (dev) or Azure App Service config (prod).
 builder.Services.AddScoped<IExperienceTemplateRepository, EfExperienceTemplateRepository>();
-builder.Services.AddScoped<ISanityContentService, SanityContentService>();
+// Typed HttpClient (not plain AddScoped) — SanityContentService.UploadImageAssetAsync
+// makes real outbound calls to Sanity's asset API once Sanity:WriteToken is set.
+builder.Services.AddHttpClient<ISanityContentService, SanityContentService>();
+
+// Real-time push (approval workflow + booking capacity) — see
+// IExperienceEventPublisher's doc comment for the event catalogue. SignalR
+// itself needs no NuGet package (built into the ASP.NET Core shared
+// framework); AddSignalR() is called further below, after JWT auth is
+// configured, since its JwtBearerEvents wiring references ExperienceHub.
+builder.Services.AddScoped<IExperienceEventPublisher, SignalRExperienceEventPublisher>();
 
 // --- Admin panel: Identity (Admin/Employee/User roles) + JWT auth --------
 // Jwt:* / SeedAdmin:* are placeholder-only ("REPLACE_ME") in appsettings.json.
@@ -129,6 +140,26 @@ builder.Services
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(1)
         };
+
+        // SignalR: a browser can't set an Authorization header on the
+        // WebSocket upgrade request, so the client sends the JWT as an
+        // "access_token" query string param instead (see
+        // src/signalr/experienceHubClient.js's accessTokenFactory). Only
+        // honor that fallback for the hub path — every other endpoint still
+        // requires a real Authorization header.
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                {
+                    context.Token = accessToken;
+                }
+                return Task.CompletedTask;
+            }
+        };
     });
 
 builder.Services.AddAuthorization();
@@ -136,6 +167,9 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserManagementService, UserManagementService>();
+
+// Built into the ASP.NET Core shared framework — no NuGet package needed.
+builder.Services.AddSignalR();
 
 builder.Services.AddCors(options =>
 {
@@ -147,7 +181,12 @@ builder.Services.AddCors(options =>
                  "https://www.archaeotrails.com"
              ) // Update this to your React app's local/prod URL
                .AllowAnyHeader()
-              .AllowAnyMethod();
+              .AllowAnyMethod()
+              // Required for SignalR's negotiate/WebSocket handshake. Safe
+              // alongside AllowAnyHeader/AllowAnyMethod here because the
+              // origins list above is explicit (not AllowAnyOrigin, which
+              // .NET refuses to combine with AllowCredentials anyway).
+              .AllowCredentials();
     });
 });
 var app = builder.Build();
@@ -165,6 +204,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<ExperienceHub>("/hubs/experience");
 
 // Seed Admin/Employee/User roles, and an initial Admin account if SeedAdmin
 // config is set — see IdentitySeeder for why this is safe to no-op otherwise.

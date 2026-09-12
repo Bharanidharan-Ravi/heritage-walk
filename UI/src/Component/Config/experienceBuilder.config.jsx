@@ -31,28 +31,37 @@ export const experienceBuilderConfig = {
 
   content: {
     builderTitle: (typeLabel) => `Experience Builder — ${typeLabel}`,
-    builderSubtitle: "Drag a block in from the left, then arrange it on the canvas.",
-    emptyCanvasTitle: "This experience is empty",
-    emptyCanvasBody: "Pick a block from the left, or drag one onto this canvas.",
+    builderSubtitle: "This is the real page — drag a block in from the left, click anything below to edit it on the right.",
     previewTitle: "Preview",
+    // Full-page live preview (ExperiencePreviewModal) — a slim top bar over
+    // the real public ExperiencePageView, not a small dialog box.
+    previewBarLabel: "Live Preview",
+    previewCloseLabel: "Close preview",
     paletteSearchPlaceholder: "Search blocks…",
     saveDraftLabel: "Save draft",
     savingLabel: "Saving…",
     submitLabel: "Submit for approval",
     submittingLabel: "Submitting…",
     cancelLabel: "Cancel",
-  },
 
-  widths: [
-    { value: 12, label: "Full", hint: "Whole row" },
-    { value: 6, label: "Half", hint: "Two per row" },
-    { value: 4, label: "Third", hint: "Three per row" },
-  ],
-
-  spanClasses: {
-    4: "col-span-12 sm:col-span-4",
-    6: "col-span-12 sm:col-span-6",
-    12: "col-span-12",
+    // WYSIWYG canvas (ExperienceCanvas) — the middle pane renders the same
+    // fixed layout as the real page (ExperiencePageView): hero banner up top,
+    // an Overview/gallery/location flow, a free block stream, and a cart
+    // skeleton docked on the side. These are the click-to-add prompts for
+    // that layout's dedicated (non-draggable, one-per-page) slots.
+    addHeroImageLabel: "+ Add hero image",
+    addGalleryLabel: "+ Add gallery",
+    addShortDescriptionLabel: "+ Add short description",
+    addFullDescriptionLabel: "+ Add full description",
+    addLocationLabel: "+ Add location",
+    addMeetingPointLabel: "+ Add meeting point",
+    emptyHeroHint: "Click, then drag & drop or browse for an image in the panel on the right →",
+    emptyShortDescriptionHint: "Click to write a short description…",
+    emptyFullDescriptionHint: "Click to write the full description…",
+    emptyGalleryHint: "No images yet — click, then drag & drop or browse for some in the panel →",
+    emptyLocationHint: "Not set — click, then fill it in on the right →",
+    cartSkeletonTitle: "Booking widget",
+    cartSkeletonNote: "Visitors pick Individual/Group + a ticket count here. Price & capacity are set by an Admin after approval.",
   },
 };
 

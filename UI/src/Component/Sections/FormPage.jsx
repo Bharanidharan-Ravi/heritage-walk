@@ -17,7 +17,7 @@
 // Free forms work without it.
 
 import React, { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { formConfig } from "../Config/form.config";
 import FormRenderer from "./FormRenderer";
 
@@ -26,6 +26,7 @@ const API_BASE = import.meta.env.VITE_API_URL;
 export default function FormPage() {
   const { slug } = useParams();
   const { theme, content } = formConfig;
+  const [searchParams] = useSearchParams();
 
   const [form, setForm] = useState(null); // { title, description, fields, requiresPayment, price, currency }
   const [values, setValues] = useState({});
@@ -41,7 +42,23 @@ export default function FormPage() {
           setErrorMessage(content.notFoundMessage);
           return;
         }
-        setForm(await res.json());
+        const data = await res.json();
+        setForm(data);
+
+        // Carried over from the experience detail page's ticket-count/
+        // registration-type widget (?qty=&registrationType=) when this form
+        // was reached via "Book Now" — matched by field NAME, not assumed to
+        // exist, so a form author who removed/renamed those predefined
+        // fields (see Config/predefinedFields.config.jsx) is unaffected.
+        const qty = searchParams.get("qty");
+        const regType = searchParams.get("registrationType");
+        const prefill = {};
+        const attendeeField = data.fields?.find((f) => f.name === "numberOfAttendees");
+        if (attendeeField && qty) prefill[attendeeField.name] = qty;
+        const regField = data.fields?.find((f) => f.name === "registrationType");
+        if (regField && regType) prefill[regField.name] = regType;
+        if (Object.keys(prefill).length > 0) setValues((prev) => ({ ...prev, ...prefill }));
+
         setStatus("ready");
       } catch {
         setStatus("error");

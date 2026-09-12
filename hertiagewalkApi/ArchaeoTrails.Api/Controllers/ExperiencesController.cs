@@ -26,21 +26,31 @@ namespace ArchaeoTrails.Api.Controllers
     [Authorize(Roles = Roles.StaffPolicy)]
     public class ExperiencesController : ControllerBase
     {
+        // Mirrors the client-side check in ExperienceBlockSettings.jsx —
+        // both sides reject an oversized/wrong-type file before it's ever
+        // handed to Sanity.
+        private const long MaxImageBytes = 8 * 1024 * 1024;
+        private static readonly string[] AllowedImageContentTypes =
+            { "image/jpeg", "image/png", "image/webp", "image/gif" };
+
         private readonly IExperienceTemplateRepository _experiences;
         private readonly IFormTemplateRepository _formTemplates;
         private readonly IAuthService _authService;
         private readonly ISanityContentService _sanity;
+        private readonly IExperienceEventPublisher _events;
 
         public ExperiencesController(
             IExperienceTemplateRepository experiences,
             IFormTemplateRepository formTemplates,
             IAuthService authService,
-            ISanityContentService sanity)
+            ISanityContentService sanity,
+            IExperienceEventPublisher events)
         {
             _experiences = experiences;
             _formTemplates = formTemplates;
             _authService = authService;
             _sanity = sanity;
+            _events = events;
         }
 
         // GET /api/experiences?tab=pending&type=walk&search=&sort=updated_desc&page=1&pageSize=10
@@ -75,7 +85,11 @@ namespace ArchaeoTrails.Api.Controllers
                 Search = search,
                 Sort = ParseSort(sort),
                 Page = page,
-                PageSize = Math.Clamp(pageSize, 1, 50)
+                // Upper bound raised from 50 -> 500 so the admin panel can
+                // fetch a whole tab's rows in one call and filter/sort/
+                // paginate client-side (see AdminExperiences.jsx) instead of
+                // re-querying SQL on every search keystroke/sort/page change.
+                PageSize = Math.Clamp(pageSize, 1, 500)
             };
 
             // Employees only ever see their own Pending work; Admins see everyone's.
@@ -94,6 +108,108 @@ namespace ArchaeoTrails.Api.Controllers
                 TotalCount = result.TotalCount,
                 Page = query.Page,
                 PageSize = query.PageSize
+            });
+        }
+
+        // ---- Public (anonymous, Published-only) -------------------------------
+        // Consumed by the public marketing site (ExperienceList.jsx / ExperienceDetail.jsx),
+        // never by the admin panel. Deliberately separate actions rather than
+        // reusing List/GetById with a role check — those two stay Employee/Admin
+        // -only and keep returning every status; these two only ever see
+        // Published rows and carry no workflow/ownership fields.
+
+        // GET /api/experiences/public?type=walk&search=&page=1&pageSize=24
+        [HttpGet("public")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ListPublic(
+            [FromQuery] string? type = null,
+            [FromQuery] string? search = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 24)
+        {
+            ExperienceType? parsedType = null;
+            if (!string.IsNullOrWhiteSpace(type) && !type.Equals("all", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!Enum.TryParse<ExperienceType>(type, true, out var t))
+                {
+                    return BadRequest(new { status = "error", message = "Invalid type. Use walk, seminar or course." });
+                }
+                parsedType = t;
+            }
+
+            var query = new ExperienceListQuery
+            {
+                // Active = Published AND (EndDate is null OR still in the future) — see ExperienceStatus.
+                Tab = ExperienceTab.Active,
+                Type = parsedType,
+                Search = search,
+                Sort = ExperienceSort.StartDateAsc,
+                Page = page,
+                PageSize = Math.Clamp(pageSize, 1, 100)
+            };
+
+            var result = await _experiences.QueryAsync(query);
+            var items = result.Items.Select(e => new PublicExperienceListItemDto
+            {
+                Id = e.Id,
+                Type = e.Type.ToString(),
+                Title = e.Title,
+                ContentBlocks = JsonSerializer.Deserialize<List<object>>(e.ContentBlocksJson) ?? new(),
+                RequiresPayment = e.RequiresPayment,
+                Price = e.Price,
+                Currency = e.Currency,
+                StartDate = e.StartDate,
+                EndDate = e.EndDate
+            }).ToList();
+
+            return Ok(new PagedResult<PublicExperienceListItemDto>
+            {
+                Items = items,
+                TotalCount = result.TotalCount,
+                Page = query.Page,
+                PageSize = query.PageSize
+            });
+        }
+
+        // GET /api/experiences/public/{id}
+        [HttpGet("public/{id:guid}")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetPublicById(Guid id)
+        {
+            var experience = await _experiences.GetByIdAsync(id);
+            if (experience is null || experience.Status != ExperienceStatus.Published)
+            {
+                // Never distinguishes "doesn't exist" from "not published yet" to an anonymous caller.
+                return NotFound();
+            }
+
+            string? linkedFormSlug = null;
+            if (experience.LinkedFormTemplateId.HasValue)
+            {
+                var form = await _formTemplates.GetByIdAsync(experience.LinkedFormTemplateId.Value);
+                linkedFormSlug = form?.Slug;
+            }
+
+            var bookingEnabled = linkedFormSlug is not null &&
+                (experience.BookingEndDate is null || experience.BookingEndDate > DateTime.UtcNow) &&
+                (experience.CapacityRemaining is null || experience.CapacityRemaining > 0);
+
+            return Ok(new PublicExperienceDetailDto
+            {
+                Id = experience.Id,
+                Type = experience.Type.ToString(),
+                Title = experience.Title,
+                ContentBlocks = JsonSerializer.Deserialize<List<object>>(experience.ContentBlocksJson) ?? new(),
+                RequiresPayment = experience.RequiresPayment,
+                Price = experience.Price,
+                Currency = experience.Currency,
+                CapacityTotal = experience.CapacityTotal,
+                CapacityRemaining = experience.CapacityRemaining,
+                BookingEnabled = bookingEnabled,
+                LinkedFormSlug = linkedFormSlug,
+                StartDate = experience.StartDate,
+                EndDate = experience.EndDate,
+                BookingEndDate = experience.BookingEndDate
             });
         }
 
@@ -133,6 +249,7 @@ namespace ArchaeoTrails.Api.Controllers
             };
 
             await _experiences.CreateAsync(experience);
+            await _events.ExperienceCreatedAsync(experience.Id);
             return Ok(new { status = "success", id = experience.Id });
         }
 
@@ -159,6 +276,7 @@ namespace ArchaeoTrails.Api.Controllers
             experience.BookingEndDate = request.BookingEndDate;
 
             await _experiences.UpdateAsync(experience);
+            await _events.ExperienceUpdatedAsync(experience.Id);
             return Ok(new { status = "success" });
         }
 
@@ -189,6 +307,7 @@ namespace ArchaeoTrails.Api.Controllers
             experience.LinkedFormTemplateId = request.LinkedFormTemplateId;
 
             await _experiences.UpdateAsync(experience);
+            await _events.ExperienceUpdatedAsync(experience.Id);
             return Ok(new { status = "success" });
         }
 
@@ -214,6 +333,7 @@ namespace ArchaeoTrails.Api.Controllers
             await _experiences.UpdateAsync(experience);
 
             await SyncAsync(experience, publish: false);
+            await _events.ApprovalRequestedAsync(experience.Id, experience.CreatedByUserId);
             return Ok(new { status = "success" });
         }
 
@@ -234,6 +354,7 @@ namespace ArchaeoTrails.Api.Controllers
             experience.ApprovedAt = DateTime.UtcNow;
             await _experiences.UpdateAsync(experience);
 
+            await _events.ExperienceStatusChangedAsync(experience.Id, experience.CreatedByUserId, experience.Status.ToString(), experience.UpdatedAt);
             return Ok(new { status = "success" });
         }
 
@@ -258,6 +379,7 @@ namespace ArchaeoTrails.Api.Controllers
             experience.ChangesRequestedReason = request.Reason.Trim();
             await _experiences.UpdateAsync(experience);
 
+            await _events.ExperienceStatusChangedAsync(experience.Id, experience.CreatedByUserId, experience.Status.ToString(), experience.UpdatedAt);
             return Ok(new { status = "success" });
         }
 
@@ -286,6 +408,7 @@ namespace ArchaeoTrails.Api.Controllers
             await _experiences.UpdateAsync(experience);
 
             await SyncAsync(experience, publish: true);
+            await _events.ExperiencePublishedAsync(experience.Id, experience.CreatedByUserId, experience.UpdatedAt);
             return Ok(new { status = "success" });
         }
 
@@ -305,7 +428,43 @@ namespace ArchaeoTrails.Api.Controllers
             experience.ClosedAt = DateTime.UtcNow;
             await _experiences.UpdateAsync(experience);
 
+            await _events.ExperienceStatusChangedAsync(experience.Id, experience.CreatedByUserId, experience.Status.ToString(), experience.UpdatedAt);
             return Ok(new { status = "success" });
+        }
+
+        // POST /api/experiences/assets/image
+        // Backs the hero-image / gallery drag-and-drop drop-zones in the
+        // Experience Builder (ExperienceBlockSettings.jsx) — the file never
+        // touches the frontend's Sanity config (no write token there); it's
+        // streamed straight through to Sanity's asset store here, and only
+        // the resulting public CDN url comes back.
+        [HttpPost("assets/image")]
+        [RequestSizeLimit(MaxImageBytes)]
+        public async Task<IActionResult> UploadImageAsset(IFormFile? file)
+        {
+            if (file is null || file.Length == 0)
+            {
+                return BadRequest(new { status = "error", message = "No image file was sent." });
+            }
+            if (file.Length > MaxImageBytes)
+            {
+                return BadRequest(new { status = "error", message = "Image is larger than 8MB." });
+            }
+            if (Array.IndexOf(AllowedImageContentTypes, file.ContentType) < 0)
+            {
+                return BadRequest(new { status = "error", message = "Only JPEG, PNG, WebP or GIF images are allowed." });
+            }
+
+            await using var stream = file.OpenReadStream();
+            var result = await _sanity.UploadImageAssetAsync(stream, file.FileName, file.ContentType);
+            if (!result.Success)
+            {
+                // Sanity not configured yet, or the upload itself failed — either
+                // way nothing was saved, so this is a plain error, not partial success.
+                return StatusCode(502, new { status = "error", message = result.Error });
+            }
+
+            return Ok(new ImageAssetDto { Url = result.Url!, AssetId = result.AssetId! });
         }
 
         // POST /api/experiences/{id}/sync-retry  (Admin only)

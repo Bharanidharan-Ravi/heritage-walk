@@ -1,3 +1,4 @@
+using System.IO;
 using System.Threading.Tasks;
 using ArchaeoTrails.Domain.Entities;
 
@@ -13,6 +14,20 @@ namespace ArchaeoTrails.Application.Interfaces
             new() { Success = true, SanityDocumentId = sanityDocumentId };
 
         public static SanitySyncResult Fail(string error) =>
+            new() { Success = false, Error = error };
+    }
+
+    public class SanityAssetUploadResult
+    {
+        public bool Success { get; set; }
+        public string? Url { get; set; }
+        public string? AssetId { get; set; }
+        public string? Error { get; set; }
+
+        public static SanityAssetUploadResult Ok(string url, string assetId) =>
+            new() { Success = true, Url = url, AssetId = assetId };
+
+        public static SanityAssetUploadResult Fail(string error) =>
             new() { Success = false, Error = error };
     }
 
@@ -32,5 +47,13 @@ namespace ArchaeoTrails.Application.Interfaces
 
         /// <summary>Called on Publish — publishes the mirrored Sanity document.</summary>
         Task<SanitySyncResult> PublishAsync(ExperienceTemplate experience);
+
+        /// <summary>
+        /// Uploads one image (hero/gallery, from the Experience Builder's
+        /// drag-and-drop drop-zones) straight to Sanity's asset store and
+        /// returns its public CDN url — the value actually stored on the
+        /// content block, same shape as a hand-typed URL was before.
+        /// </summary>
+        Task<SanityAssetUploadResult> UploadImageAssetAsync(Stream fileStream, string fileName, string contentType);
     }
 }

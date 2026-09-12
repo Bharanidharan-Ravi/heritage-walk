@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { useAdminAuth } from "../../Admin/AuthContext";
 import { adminApi } from "../../Admin/adminApi";
 import { adminConfig } from "../../Config/admin.config";
 import { adminUi } from "../../Config/adminUi.config";
+import { qk } from "../../../queryKeys";
 
 export default function AdminFormSubmissions() {
   const { id } = useParams();
@@ -11,26 +12,17 @@ export default function AdminFormSubmissions() {
   const { theme } = adminConfig;
   const { text, control, pad } = adminUi;
 
-  const [submissions, setSubmissions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await adminApi.listSubmissions(token, id);
-        if (!cancelled) setSubmissions(data);
-      } catch (err) {
-        if (!cancelled) setError(err.message || "Could not load submissions.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [token, id]);
+  const {
+    data: submissions = [],
+    isLoading: loading,
+    error: queryError,
+  } = useQuery({
+    queryKey: qk.formSubmissions(id),
+    queryFn: () => adminApi.listSubmissions(token, id),
+    staleTime: Infinity,
+    enabled: !!token && !!id,
+  });
+  const error = queryError?.message || (queryError ? "Could not load submissions." : "");
 
   return (
     <div>
