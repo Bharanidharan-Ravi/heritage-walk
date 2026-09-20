@@ -82,10 +82,7 @@ export default function AdminLayout() {
           className="shrink-0 border-t p-1.5 flex flex-col items-stretch gap-1.5"
           style={{ borderColor: theme.borderColor }}
         >
-          <div
-            className={`flex items-center gap-2 rounded-md py-1 ${expanded ? "px-1.5" : "px-0 justify-center"}`}
-            title={!expanded ? `${user?.fullName || ""} — ${user?.role || ""}` : undefined}
-          >
+          <div className={`relative group flex items-center gap-2 rounded-md py-1 ${expanded ? "px-1.5" : "px-0 justify-center"}`}>
             <div
               className="w-6 h-6 shrink-0 rounded-full grid place-items-center text-[10px] font-bold"
               style={{ backgroundColor: "rgba(193,157,96,0.18)", color: theme.accentColor }}
@@ -100,21 +97,24 @@ export default function AdminLayout() {
                 </p>
               </div>
             )}
+            {!expanded && <SidebarTooltip theme={theme} text={text}>{`${user?.fullName || ""} — ${user?.role || ""}`}</SidebarTooltip>}
           </div>
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            title="Log Out"
-            aria-label="Log Out"
-            className={`flex items-center gap-2 rounded-md border transition-opacity hover:opacity-80 ${
-              expanded ? "px-2 py-1.5 justify-start" : "w-7 h-7 justify-center mx-auto"
-            }`}
-            style={{ borderColor: theme.accentColor, color: theme.accentColor }}
-          >
-            <IconLogout />
-            {expanded && <span className={text.micro}>Log Out</span>}
-          </button>
+          <div className="relative group" style={{ width: expanded ? "100%" : undefined }}>
+            <button
+              type="button"
+              onClick={handleLogout}
+              aria-label="Log Out"
+              className={`flex items-center gap-2 rounded-md border transition-opacity hover:opacity-80 ${
+                expanded ? "px-2 py-1.5 justify-start w-full" : "w-7 h-7 justify-center mx-auto"
+              }`}
+              style={{ borderColor: theme.accentColor, color: theme.accentColor }}
+            >
+              <IconLogout />
+              {expanded && <span className={text.micro}>Log Out</span>}
+            </button>
+            {!expanded && <SidebarTooltip theme={theme} text={text}>Log Out</SidebarTooltip>}
+          </div>
         </div>
       </aside>
 
@@ -130,23 +130,42 @@ export default function AdminLayout() {
 
 function NavItem({ to, label, end, icon: Icon, expanded, theme, text }) {
   return (
-    <NavLink
-      to={to}
-      end={end}
-      title={!expanded ? label : undefined}
-      className={({ isActive }) =>
-        `flex items-center gap-2.5 rounded-md py-1.5 transition-colors ${expanded ? "px-2" : "px-0 justify-center"} ${
-          isActive ? "opacity-100" : "opacity-60 hover:opacity-90"
-        }`
-      }
-      style={({ isActive }) => ({
-        backgroundColor: isActive ? "rgba(193,157,96,0.15)" : "transparent",
-        color: theme.textColor,
-      })}
+    <div className="relative group">
+      <NavLink
+        to={to}
+        end={end}
+        className={({ isActive }) =>
+          `flex items-center gap-2.5 rounded-md py-1.5 transition-colors ${expanded ? "px-2" : "px-0 justify-center"} ${
+            isActive ? "opacity-100" : "opacity-60 hover:opacity-90"
+          }`
+        }
+        style={({ isActive }) => ({
+          backgroundColor: isActive ? "rgba(193,157,96,0.15)" : "transparent",
+          color: theme.textColor,
+        })}
+      >
+        <Icon className="w-4 h-4 shrink-0" />
+        {expanded && <span className={`${text.micro} truncate`}>{label}</span>}
+      </NavLink>
+      {!expanded && <SidebarTooltip theme={theme} text={text}>{label}</SidebarTooltip>}
+    </div>
+  );
+}
+
+// Collapsed sidebar is icon-only — the browser's native `title` tooltip is
+// slow to appear and easy to miss, so hovering any icon (nav item, avatar,
+// log out) shows this instead: instant, themed, never clipped by the
+// sidebar's own width since it's positioned relative to the icon itself.
+function SidebarTooltip({ theme, text, children }) {
+  return (
+    <span
+      role="tooltip"
+      className={`pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 z-40 whitespace-nowrap rounded-md px-2 py-1 ${text.micro}
+                  opacity-0 -translate-x-1 transition-all duration-100 group-hover:opacity-100 group-hover:translate-x-0`}
+      style={{ backgroundColor: theme.sidebarBackground, color: theme.textColor, border: `1px solid ${theme.borderColor}` }}
     >
-      <Icon className="w-4 h-4 shrink-0" />
-      {expanded && <span className={`${text.micro} truncate`}>{label}</span>}
-    </NavLink>
+      {children}
+    </span>
   );
 }
 

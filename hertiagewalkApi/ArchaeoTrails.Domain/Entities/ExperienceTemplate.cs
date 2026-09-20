@@ -59,11 +59,11 @@ namespace ArchaeoTrails.Domain.Entities
         /// <summary>The registration form for this experience — reuses the existing Form Generator.</summary>
         public Guid? LinkedFormTemplateId { get; set; }
 
-        /// <summary>Individual-only, Group(private)-only, or Both — set together with payment/capacity.</summary>
+        /// <summary>Individual-only, Private-only, or Both — set together with payment/capacity.</summary>
         public RegistrationType RegistrationType { get; set; } = RegistrationType.Individual;
 
         /// <summary>
-        /// JSON array of ISO date strings — the bookable dates for Group
+        /// JSON array of ISO date strings — the bookable dates for Private
         /// registration. Seeded from StartDate..EndDate (one per day) by the
         /// frontend, then freely edited (a date removed, or extra ones added
         /// for the same day) — deliberately NOT normalized into SQL rows, same

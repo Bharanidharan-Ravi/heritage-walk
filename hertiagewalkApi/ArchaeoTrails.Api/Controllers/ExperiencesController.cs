@@ -301,11 +301,11 @@ namespace ArchaeoTrails.Api.Controllers
             }
             if (!Enum.TryParse<RegistrationType>(request.RegistrationType, true, out var registrationType))
             {
-                return BadRequest(new { status = "error", message = "Invalid registration type. Use Individual, Group or Both." });
+                return BadRequest(new { status = "error", message = "Invalid registration type. Use Individual, Private or Both." });
             }
             if (registrationType != RegistrationType.Individual && request.Slots.Count == 0)
             {
-                return BadRequest(new { status = "error", message = "Add at least one bookable date for Group registration." });
+                return BadRequest(new { status = "error", message = "Add at least one bookable date for Private registration." });
             }
 
             experience.RequiresPayment = request.RequiresPayment;
@@ -318,7 +318,7 @@ namespace ArchaeoTrails.Api.Controllers
             experience.RegistrationType = registrationType;
             // Individual-only ignores slots entirely (BookingEndDate alone gates
             // it) — clearing them here instead of trusting the caller to send an
-            // empty list keeps a stale Group slot list from lingering unseen.
+            // empty list keeps a stale Private slot list from lingering unseen.
             // Duplicate dates are kept as-is (not deduped): an Admin can add
             // more than one slot for the same day — e.g. a morning and an
             // evening batch — even though a slot carries no other field yet.

@@ -83,7 +83,61 @@ namespace ArchaeoTrails.Api.Controllers
 
             await _formTemplateRepository.CreateAsync(template);
 
-            return Ok(new { status = "success", slug = template.Slug });
+            return Ok(new { status = "success", id = template.Id, slug = template.Slug });
+        }
+
+        // GET /api/forms/{id}  (Admin/Employee only) — full field definitions,
+        // for editing a form (e.g. the Experience Builder's embedded
+        // registration-fields panel loading an already-linked form back in).
+        [HttpGet("{id:guid}")]
+        [Authorize(Roles = Roles.StaffPolicy)]
+        public async Task<IActionResult> GetFormById(Guid id)
+        {
+            var template = await _formTemplateRepository.GetByIdAsync(id);
+            if (template is null) return NotFound();
+
+            return Ok(new FormDto
+            {
+                Id = template.Id,
+                Title = template.Title,
+                Description = template.Description,
+                Slug = template.Slug,
+                Fields = ParseFields(template),
+                RequiresPayment = template.RequiresPayment,
+                Price = template.Price,
+                Currency = template.Currency
+            });
+        }
+
+        // PUT /api/forms/{id}  (Admin/Employee only) — replaces title/description/
+        // fields/payment on an existing form. Same shape and validation as Create;
+        // the slug never changes so any already-shared link/QR keeps working.
+        [HttpPut("{id:guid}")]
+        [Authorize(Roles = Roles.StaffPolicy)]
+        public async Task<IActionResult> UpdateForm(Guid id, [FromBody] CreateFormTemplateRequest request)
+        {
+            var template = await _formTemplateRepository.GetByIdAsync(id);
+            if (template is null) return NotFound();
+
+            if (string.IsNullOrWhiteSpace(request.Title) || request.Fields.Count == 0)
+            {
+                return BadRequest(new { status = "error", message = "Title and at least one field are required." });
+            }
+            if (request.RequiresPayment && request.Price <= 0)
+            {
+                return BadRequest(new { status = "error", message = "A paid form needs a price above zero." });
+            }
+
+            template.Title = request.Title;
+            template.Description = request.Description;
+            template.FieldsJson = JsonSerializer.Serialize(request.Fields);
+            template.RequiresPayment = request.RequiresPayment;
+            template.Price = request.RequiresPayment ? request.Price : 0m;
+            template.Currency = request.Currency;
+
+            await _formTemplateRepository.UpdateAsync(template);
+
+            return Ok(new { status = "success", id = template.Id, slug = template.Slug });
         }
 
         // GET /api/forms/{slug}  (public)
@@ -95,6 +149,7 @@ namespace ArchaeoTrails.Api.Controllers
 
             var dto = new FormDto
             {
+                Id = template.Id,
                 Title = template.Title,
                 Description = template.Description,
                 Slug = template.Slug,

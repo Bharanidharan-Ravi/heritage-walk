@@ -26,6 +26,11 @@ import ExperienceBlockPalette from "../../Admin/ExperienceBuilder/ExperienceBloc
 import ExperienceCanvas from "../../Admin/ExperienceBuilder/ExperienceCanvas";
 import ExperienceBlockSettings from "../../Admin/ExperienceBuilder/ExperienceBlockSettings";
 import ExperiencePreviewModal from "../../Admin/ExperienceBuilder/ExperiencePreviewModal";
+import { useFormBuilder } from "../../Admin/FormBuilder/useFormBuilder";
+import FieldPalette from "../../Admin/FormBuilder/FieldPalette";
+import BuilderCanvas from "../../Admin/FormBuilder/BuilderCanvas";
+import FieldSettings from "../../Admin/FormBuilder/FieldSettings";
+import { formBuilderConfig } from "../../Config/formBuilder.config";
 import { qk } from "../../../queryKeys";
 
 export default function AdminExperienceBuilder() {
@@ -42,6 +47,14 @@ export default function AdminExperienceBuilder() {
 
   const builder = useExperienceBuilder(experienceType);
   const { theme, content } = experienceBuilderConfig;
+
+  // The registration form (Name/Email/Phone/Food/"How did you hear"/Address/…)
+  // is built right here with the SAME embedded palette+canvas+settings the
+  // standalone Form Builder uses (Admin/FormBuilder/*), so an Admin never
+  // leaves this page to add fields — see handleSaveCart, which auto-creates
+  // or updates the linked FormTemplate behind the scenes on save.
+  const regForm = useFormBuilder();
+  const [regFormDrag, setRegFormDrag] = useState(null);
 
   const [drag, setDrag] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -94,6 +107,20 @@ export default function AdminExperienceBuilder() {
     setHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail]);
+
+  // Load the already-linked form's fields into the embedded registration-form
+  // builder so re-opening a saved experience shows them, not a blank canvas.
+  useEffect(() => {
+    if (!detail?.linkedFormTemplateId || !token) return;
+    let cancelled = false;
+    adminApi.getFormById(token, detail.linkedFormTemplateId).then((form) => {
+      if (!cancelled) regForm.loadExisting(form);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail?.linkedFormTemplateId, token]);
 
   const typeLabel = EXPERIENCE_TYPES.find((t) => t.type === experienceType)?.label || "Experience";
 
@@ -172,6 +199,17 @@ export default function AdminExperienceBuilder() {
       setCartError("Give the experience a title and at least one block first.");
       return;
     }
+    // "Give the form a title." is ignored here — the registration form never
+    // shows its own title field, it always inherits the experience's title
+    // (see the payload below), so that one warning would never clear itself.
+    const formErrors = regForm.fields.length > 0
+      ? regForm.validationErrors.filter((e) => e !== "Give the form a title.")
+      : [];
+    if (formErrors.length > 0) {
+      setCartError(formErrors[0]);
+      return;
+    }
+
     setCartSaving(true);
     setCartError("");
     try {
@@ -184,12 +222,36 @@ export default function AdminExperienceBuilder() {
         setExperienceId(id);
         navigate(`/admin/experiences/${id}/edit`, { replace: true });
       }
+
+      // Registration fields are edited right here, but they're still saved as
+      // a FormTemplate under the hood (see the module header comment) so the
+      // existing Form Generator submission/payment pipeline (FormsController)
+      // needs no changes — only its price/currency are pulled from THIS
+      // cart's own settings so there's a single payment config, not two.
+      let formId = linkedFormTemplateId;
+      if (regForm.fields.length > 0) {
+        const formPayload = {
+          ...regForm.toCreateRequest(),
+          title: `${builder.title.trim() || typeLabel} — Registration`,
+          requiresPayment,
+          price: requiresPayment ? Number(price) || 0 : 0,
+          currency,
+        };
+        if (formId) {
+          await adminApi.updateForm(token, formId, formPayload);
+        } else {
+          const createdForm = await adminApi.createForm(token, formPayload);
+          formId = createdForm.id;
+          setLinkedFormTemplateId(formId);
+        }
+      }
+
       await adminApi.setExperiencePayment(token, id, {
         requiresPayment,
         price: requiresPayment ? Number(price) || 0 : 0,
         currency,
         capacityTotal: capacityTotal === "" ? null : Number(capacityTotal),
-        linkedFormTemplateId,
+        linkedFormTemplateId: formId,
         registrationType,
         slots: registrationType === "Individual" ? [] : slots,
       });
@@ -216,7 +278,7 @@ export default function AdminExperienceBuilder() {
     // the header below stays pinned, and only the palette/canvas/settings
     // grid (the "experience builder area" — title and schedule dates included,
     // as slots inside the canvas) scrolls internally.
-    <div className="flex flex-col" style={{ height: "calc(100vh - 2rem)" }}>
+    <div className="flex flex-col overflow-y-auto" style={{ height: "calc(100vh - 2rem)" }}>
       <div className="shrink-0">
         <header className="flex flex-wrap items-start justify-between gap-2 mb-3">
           <div>
@@ -250,15 +312,23 @@ export default function AdminExperienceBuilder() {
         {saveError && <p className={`mb-3 ${adminUi.text.body}`} style={{ color: theme.dangerColor }}>{saveError}</p>}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto pb-1">
-        <div className="grid grid-cols-1 lg:grid-cols-[176px_1fr_260px] gap-3 items-start">
-          <ExperienceBlockPalette
-            experienceType={experienceType}
-            onAdd={(blockKey) => builder.addBlock(blockKey)}
-            onDragStartNew={(blockKey) => setDrag({ kind: "new", blockKey })}
-            onDragEnd={() => setDrag(null)}
-          />
+      {/* Palette, canvas, and settings each get their OWN scrollbar on
+          desktop (lg:h-full + lg:overflow-y-auto), instead of one shared
+          scroll dragging all three columns together — a long block list and
+          a long canvas no longer fight over the same scroll position. Mobile
+          keeps the simple single-column stacked scroll it already had. */}
+      <div className="shrink-0 overflow-y-auto lg:overflow-hidden pb-1 lg:h-[calc(100vh-9rem)] lg:min-h-112">
+        <div className="flex flex-col lg:flex-row gap-3 lg:h-full items-start lg:items-stretch">
+          <div className="w-full lg:w-44 lg:shrink-0 lg:h-full lg:min-h-0 lg:overflow-y-auto">
+            <ExperienceBlockPalette
+              experienceType={experienceType}
+              onAdd={(blockKey) => builder.addBlock(blockKey)}
+              onDragStartNew={(blockKey) => setDrag({ kind: "new", blockKey })}
+              onDragEnd={() => setDrag(null)}
+            />
+          </div>
 
+          <div className="w-full lg:flex-1 lg:min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto">
           <ExperienceCanvas
             experienceType={experienceType}
             title={builder.title}
@@ -289,7 +359,9 @@ export default function AdminExperienceBuilder() {
             registrationType={registrationType}
             slots={slots}
           />
+          </div>
 
+          <div className="w-full lg:w-65 lg:shrink-0 lg:h-full lg:min-h-0 lg:overflow-y-auto">
           <ExperienceBlockSettings
             experienceType={experienceType}
             block={builder.selectedBlock}
@@ -322,8 +394,61 @@ export default function AdminExperienceBuilder() {
             cartSaving={cartSaving}
             cartError={cartError}
           />
+          </div>
         </div>
       </div>
+
+      {/* Registration form — Admin-only (setExperiencePayment, which links it,
+          is an Admin-only endpoint). Built with the SAME palette/canvas/
+          settings trio the standalone Form Builder uses, just pointed at
+          `regForm`'s state instead of a page of its own — see handleSaveCart
+          for how it's turned into a FormTemplate on save. Sits below the
+          fixed-height builder area above (which owns its own internal
+          scroll), so it scrolls into view with the rest of the page. */}
+      {isAdmin && (
+        <div className="mt-5 shrink-0">
+          <h2 className={adminUi.text.header} style={{ fontSize: "1.05rem" }}>Registration form</h2>
+          <p className={`${adminUi.text.body} mb-3`} style={{ color: theme.mutedColor }}>
+            Drag in the fields visitors fill out to register — Name, Email, Phone, Food preference, “How did you hear about this”, future-walk updates, Address, and more. Saved together with “Save cart settings” below.
+          </p>
+
+          {regForm.fields.length > 0 && regForm.warnings.includes("noSubmitterEmail") && (
+            <p className={`mb-3 ${adminUi.text.body}`} style={{ color: theme.mutedColor }}>
+              {formBuilderConfig.content.noSubmitterEmailWarning}
+            </p>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-[176px_1fr_232px] gap-3 items-start">
+            <FieldPalette
+              onAdd={(blockKey) => regForm.addField(blockKey)}
+              onDragStartNew={(blockKey) => setRegFormDrag({ kind: "new", blockKey })}
+              onDragEnd={() => setRegFormDrag(null)}
+            />
+
+            <BuilderCanvas
+              fields={regForm.fields}
+              selectedId={regForm.selectedId}
+              onSelect={regForm.setSelectedId}
+              onMove={regForm.moveField}
+              onNudge={regForm.nudgeField}
+              onInsertNew={regForm.addField}
+              onRemove={regForm.removeField}
+              onDuplicate={regForm.duplicateField}
+              onWidthChange={(id, width) => regForm.updateField(id, { width })}
+              drag={regFormDrag}
+              onDragEnd={() => setRegFormDrag(null)}
+              onDragStartMove={(index) => setRegFormDrag({ kind: "move", index })}
+            />
+
+            <FieldSettings
+              field={regForm.selectedField}
+              onChange={regForm.updateField}
+              onChangeChild={regForm.updateChild}
+              onRemove={regForm.removeField}
+            />
+          </div>
+        </div>
+      )}
 
       {showPreview && (
         <ExperiencePreviewModal

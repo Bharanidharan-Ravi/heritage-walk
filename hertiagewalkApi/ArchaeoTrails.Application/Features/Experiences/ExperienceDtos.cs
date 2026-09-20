@@ -43,10 +43,10 @@ namespace ArchaeoTrails.Application.Features.Experiences
 
         public Guid? LinkedFormTemplateId { get; set; }
 
-        /// <summary>"Individual" | "Group" | "Both" (case-insensitive).</summary>
+        /// <summary>"Individual" | "Private" | "Both" (case-insensitive).</summary>
         public string RegistrationType { get; set; } = "Individual";
 
-        /// <summary>Bookable dates for Group registration — ignored when RegistrationType is Individual.</summary>
+        /// <summary>Bookable dates for Private registration — ignored when RegistrationType is Individual.</summary>
         public List<DateTime> Slots { get; set; } = new();
     }
 
@@ -185,9 +185,9 @@ namespace ArchaeoTrails.Application.Features.Experiences
         public int? CapacityTotal { get; set; }
         public int? CapacityRemaining { get; set; }
 
-        /// <summary>"Individual" | "Group" | "Both" — which option(s) the cart offers.</summary>
+        /// <summary>"Individual" | "Private" | "Both" — which option(s) the cart offers.</summary>
         public string RegistrationType { get; set; } = "Individual";
-        /// <summary>Bookable dates for Group registration; empty when RegistrationType is Individual.</summary>
+        /// <summary>Bookable dates for Private registration; empty when RegistrationType is Individual.</summary>
         public List<DateTime> Slots { get; set; } = new();
 
         /// <summary>true once a registration form is linked and still accepting bookings (not past BookingEndDate, seats left).</summary>

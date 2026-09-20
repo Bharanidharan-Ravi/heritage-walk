@@ -1,4 +1,5 @@
 using System.Text;
+using ArchaeoTrails.Api.Debugging;
 using ArchaeoTrails.Api.Hubs;
 using ArchaeoTrails.Api.RealTime;
 using ArchaeoTrails.Application.Interfaces;
@@ -47,9 +48,17 @@ builder.Services.AddScoped<IEmailService, ZohoEmailService>();
 // --- Form Generator (dry scaffold) ---------------------------------------
 // TODO(form-generator): set ConnectionStrings:AzureSql via `dotnet user-secrets`
 // (dev) or Azure App Service configuration (prod) — never in appsettings.json.
+//
+// DEV NOTE (temporary): pointed at a local SQL Server instance instead of
+// Azure SQL to avoid burning Azure free-tier compute while iterating on
+// migrations locally. Swap back to "AzureSql" before deploying/merging to
+// production. Both connection strings live in `dotnet user-secrets` for the
+// ArchaeoTrails.Api project (ConnectionStrings:AzureSql / ConnectionStrings:SqlServerConnection),
+// never in appsettings.json.
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(
-        builder.Configuration.GetConnectionString("AzureSql"),
+        // builder.Configuration.GetConnectionString("AzureSql"),
+        builder.Configuration.GetConnectionString("SqlServerConnection"),
         sqlOptions => sqlOptions.EnableRetryOnFailure()));
 
 builder.Services.AddScoped<IFormTemplateRepository, EfFormTemplateRepository>();
@@ -109,6 +118,8 @@ builder.Services
     // GeneratePasswordResetTokenAsync so the old password isn't needed.
     .AddDefaultTokenProviders();
 
+var debugErrors = DebugErrors.IsEnabled(builder.Configuration);
+
 var jwtKey = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey == "REPLACE_ME")
 {
@@ -160,6 +171,9 @@ builder.Services
                 return Task.CompletedTask;
             }
         };
+
+        // Debug:DetailedErrors — explains 401/403 in the response body.
+        DebugErrors.Attach(options.Events, debugErrors);
     });
 
 builder.Services.AddAuthorization();
@@ -196,6 +210,12 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+}
+
+if (debugErrors)
+{
+    // Debug:DetailedErrors — full exception details in 500 responses.
+    app.UseDebugExceptions();
 }
 
 app.UseHttpsRedirection();

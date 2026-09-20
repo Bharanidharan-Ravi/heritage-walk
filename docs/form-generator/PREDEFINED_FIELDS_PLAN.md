@@ -197,7 +197,7 @@ arrives fully configured:
 **Event**
 | Block | Type | Preconfigured |
 |---|---|---|
-| Registration Type | select | options `Individual`, `Group`, required |
+| Registration Type | select | options `Individual`, `Private`, required |
 | Number of Attendees | number | min 1, max 50, required. *Always visible* — conditional display is deferred, see §5; the help text says "Enter 1 for an individual registration." instead |
 | Preferred Lunch | checkbox | options `Veg Rice`, `Sambhar Rice`, `Curd Rice` |
 | How did you hear about this event? | checkbox | options `Whatsapp`, `Instagram`, `Website`, `Facebook`, `Other` + `allowOther: true` |
@@ -288,7 +288,7 @@ scroll.
 
 ## 5. Deliberately deferred
 
-- **Conditional visibility** ("Number of Attendees" only when type = Group).
+- **Conditional visibility** ("Number of Attendees" only when type = Private).
   Real feature, needs its own `visibleWhen` rule engine in the renderer *and*
   server-side re-validation. Phase 3 — until then the field is simply always
   visible with help text.

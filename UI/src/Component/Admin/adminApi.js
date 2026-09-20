@@ -110,6 +110,12 @@ export const adminApi = {
   listForms: (token) => request("/api/forms", { token }),
   createForm: (token, payload) =>
     request("/api/forms", { method: "POST", body: payload, token }),
+  // Full field definitions by id (not the public by-slug route) — used to load
+  // an already-linked form back into the Experience Builder's embedded
+  // registration-fields panel, and to re-save it.
+  getFormById: (token, id) => request(`/api/forms/${id}`, { token }),
+  updateForm: (token, id, payload) =>
+    request(`/api/forms/${id}`, { method: "PUT", body: payload, token }),
   updateFormStatus: (token, id, isActive) =>
     request(`/api/forms/${id}/status`, { method: "PUT", body: { isActive }, token }),
   listSubmissions: (token, formId) =>

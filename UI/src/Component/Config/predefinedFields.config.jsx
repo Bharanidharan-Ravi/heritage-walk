@@ -220,7 +220,7 @@ export const predefinedBlocks = [
     group: "Event",
     paletteLabel: "Reg. type",
     icon: "users",
-    keywords: "registration individual group booking type",
+    keywords: "registration individual private group booking type",
     field: {
       type: "select",
       name: "registrationType",
@@ -228,7 +228,7 @@ export const predefinedBlocks = [
       placeholder: "-Select-",
       required: true,
       width: 6,
-      options: ["Individual", "Group"],
+      options: ["Individual", "Private"],
     },
   },
   {

@@ -25,6 +25,13 @@ import {
 let idCounter = 0;
 const nextId = () => `b${Date.now().toString(36)}${(idCounter++).toString(36)}`;
 
+// FAQ reads best as the last thing on the page — a stable partition (not a
+// hard-coded index) so it survives drags/inserts/removals anywhere else in
+// the list without an admin having to manually drag it back down every time.
+function sortFaqLast(list) {
+  return [...list].sort((a, b) => (a.shape === "faqList") - (b.shape === "faqList"));
+}
+
 /** Build a block instance from a catalogue key. */
 export function createBlock(experienceType, blockKey) {
   const template = getBlockByKey(experienceType)[blockKey];
@@ -39,12 +46,15 @@ export function createBlock(experienceType, blockKey) {
     options: template.options,
   };
 
-  return isItemsBased(template.shape) ? { ...base, items: [] } : { ...base, value: template.shape === "toggle" ? false : "" };
+  // Toggle blocks (Kids Friendly, Accessibility, Accommodation, Food & Refreshments,
+  // Certificate Provided, ...) default to "Yes" — an admin unchecks the ones
+  // that don't apply rather than having to check every one that does.
+  return isItemsBased(template.shape) ? { ...base, items: [] } : { ...base, value: template.shape === "toggle" ? true : "" };
 }
 
 /** Rehydrate blocks loaded from the API (no builder-local ids yet). */
 export function hydrateBlocks(rawBlocks) {
-  return (rawBlocks || []).map((b) => ({ ...b, id: nextId() }));
+  return sortFaqLast((rawBlocks || []).map((b) => ({ ...b, id: nextId() })));
 }
 
 export function useExperienceBuilder(experienceType) {
@@ -70,7 +80,7 @@ export function useExperienceBuilder(experienceType) {
       const next = [...prev];
       next.splice(at, 0, withPatch);
       setSelectedId(withPatch.id);
-      return next;
+      return sortFaqLast(next);
     });
   }, [experienceType]);
 
@@ -91,7 +101,7 @@ export function useExperienceBuilder(experienceType) {
       const next = [...prev];
       next.splice(index + 1, 0, copy);
       setSelectedId(copy.id);
-      return next;
+      return sortFaqLast(next);
     });
   }, []);
 
@@ -102,7 +112,7 @@ export function useExperienceBuilder(experienceType) {
       const [moved] = next.splice(from, 1);
       const target = Math.max(0, Math.min(next.length, to > from ? to - 1 : to));
       next.splice(target, 0, moved);
-      return next;
+      return sortFaqLast(next);
     });
   }, []);
 
@@ -113,7 +123,7 @@ export function useExperienceBuilder(experienceType) {
       if (index === -1 || target < 0 || target >= prev.length) return prev;
       const next = [...prev];
       [next[index], next[target]] = [next[target], next[index]];
-      return next;
+      return sortFaqLast(next);
     });
   }, []);
 

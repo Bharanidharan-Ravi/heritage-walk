@@ -108,6 +108,16 @@ export function createField(blockKey, existingFields = []) {
 /** The answer key a group's sub-field is submitted under: "address.pincode". */
 export const childAnswerName = (field, child) => `${field.name}.${child.name}`;
 
+/** Rehydrate fields loaded from the API (no builder-local ids yet) — same idea
+ *  as useExperienceBuilder's hydrateBlocks. */
+function hydrateFields(rawFields) {
+  return (rawFields || []).map((f) => ({
+    ...f,
+    id: nextId(),
+    children: f.children?.map((c) => ({ ...c, id: nextId() })),
+  }));
+}
+
 export function useFormBuilder() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -331,6 +341,17 @@ export function useFormBuilder() {
     setSelectedId(null);
   }, []);
 
+  /** Load a form fetched from the API (e.g. one already linked to an
+   *  Experience) into this builder's state, so it can be edited in place. */
+  const loadExisting = useCallback((form) => {
+    setTitle(form.title || "");
+    setDescription(form.description || "");
+    setRequiresPayment(Boolean(form.requiresPayment));
+    setPrice(form.requiresPayment ? String(form.price) : "");
+    setFields(hydrateFields(form.fields));
+    setSelectedId(null);
+  }, []);
+
   return {
     title, setTitle,
     description, setDescription,
@@ -346,5 +367,6 @@ export function useFormBuilder() {
     warnings,
     toCreateRequest,
     reset,
+    loadExisting,
   };
 }

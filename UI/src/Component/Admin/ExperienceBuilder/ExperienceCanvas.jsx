@@ -28,6 +28,7 @@ import FieldIcon from "../../Config/fieldIcons";
 import { BlockSection } from "../../Sections/ExperiencePageView";
 import { hasValue, formatSimpleValue } from "../../Sections/experienceBlockHelpers";
 import { useExperienceImageUpload, validateImageFile } from "./imageUpload";
+import RichTextEditor from "./RichTextEditor";
 
 const { theme: chromeTheme, content: builderContent } = experienceBuilderConfig; // admin dark chrome — toolbars only
 const { theme: pageTheme, content: pageContent, sectionLabels, layoutKeys, positiveListKeys, negativeListKeys } = experiencePublicConfig; // the real page's own look
@@ -173,16 +174,34 @@ export default function ExperienceCanvas({
               onUpdate={(url) => onUpdateBlock(hero.id, { value: url })}
             />
 
-            {/* OVERVIEW (short + full description) */}
+            {/* OVERVIEW (short + full description) — rich-text editable
+                directly here, not in the sidebar (ExperienceBlockSettings
+                only shows the Label field for these two blocks); see
+                RichTextEditor.jsx. */}
             <div className="mb-8">
               <h2 className="text-2xl font-serif mb-3" style={{ color: pageTheme.accentColor }}>{pageContent.overviewCardTitle}</h2>
 
               {summary ? (
-                <Slot selected={summary.id === selectedId} onClick={() => onSelect(summary.id)} className="mb-3">
-                  {summary.value
-                    ? <p className="text-lg leading-relaxed font-light whitespace-pre-wrap">{summary.value}</p>
-                    : <EmptyHint theme={pageTheme}>{builderContent.emptyShortDescriptionHint}</EmptyHint>}
-                </Slot>
+                <div className="mb-3">
+                  <RichTextEditor
+                    value={summary.value}
+                    onChange={(html) => onUpdateBlock(summary.id, { value: html })}
+                    lineHeight={summary.lineHeight}
+                    onLineHeightChange={(lh) => onUpdateBlock(summary.id, { lineHeight: lh })}
+                    fontFamily={summary.fontFamily}
+                    onFontFamilyChange={(v) => onUpdateBlock(summary.id, { fontFamily: v })}
+                    fontSize={summary.fontSize}
+                    onFontSizeChange={(v) => onUpdateBlock(summary.id, { fontSize: v })}
+                    fontWeight={summary.fontWeight}
+                    onFontWeightChange={(v) => onUpdateBlock(summary.id, { fontWeight: v })}
+                    selected={summary.id === selectedId}
+                    onSelect={() => onSelect(summary.id)}
+                    placeholder={builderContent.emptyShortDescriptionHint}
+                    theme={pageTheme}
+                    className="text-lg font-light"
+                    minHeight="3.5rem"
+                  />
+                </div>
               ) : (
                 <AddSlot theme={pageTheme} onClick={() => onInsertNew(layoutKeys.shortDescription)} className="mb-3 h-14">
                   {builderContent.addShortDescriptionLabel}
@@ -190,16 +209,81 @@ export default function ExperienceCanvas({
               )}
 
               {fullDescription ? (
-                <Slot selected={fullDescription.id === selectedId} onClick={() => onSelect(fullDescription.id)}>
-                  {fullDescription.value
-                    ? <p className="leading-relaxed whitespace-pre-wrap" style={{ color: pageTheme.mutedColor }}>{fullDescription.value}</p>
-                    : <EmptyHint theme={pageTheme}>{builderContent.emptyFullDescriptionHint}</EmptyHint>}
-                </Slot>
+                <RichTextEditor
+                  value={fullDescription.value}
+                  onChange={(html) => onUpdateBlock(fullDescription.id, { value: html })}
+                  lineHeight={fullDescription.lineHeight}
+                  onLineHeightChange={(lh) => onUpdateBlock(fullDescription.id, { lineHeight: lh })}
+                  fontFamily={fullDescription.fontFamily}
+                  onFontFamilyChange={(v) => onUpdateBlock(fullDescription.id, { fontFamily: v })}
+                  fontSize={fullDescription.fontSize}
+                  onFontSizeChange={(v) => onUpdateBlock(fullDescription.id, { fontSize: v })}
+                  fontWeight={fullDescription.fontWeight}
+                  onFontWeightChange={(v) => onUpdateBlock(fullDescription.id, { fontWeight: v })}
+                  selected={fullDescription.id === selectedId}
+                  onSelect={() => onSelect(fullDescription.id)}
+                  placeholder={builderContent.emptyFullDescriptionHint}
+                  theme={pageTheme}
+                  style={{ color: pageTheme.mutedColor }}
+                  minHeight="9rem"
+                />
               ) : (
                 <AddSlot theme={pageTheme} onClick={() => onInsertNew(layoutKeys.fullDescription)} className="h-14">
                   {builderContent.addFullDescriptionLabel}
                 </AddSlot>
               )}
+            </div>
+
+            {/* GALLERY — fixed position, rendered BEFORE the stream so that
+                whatever ends up last in the stream (FAQ always does, see
+                sortFaqLast in useExperienceBuilder.js) reads as the true
+                bottom of the page, not sandwiched above Gallery/Location. */}
+            {gallery ? (
+              <Slot selected={gallery.id === selectedId} onClick={() => onSelect(gallery.id)} className="mb-8">
+                <h2 className="text-2xl font-serif mb-3" style={{ color: pageTheme.accentColor }}>{pageContent.galleryCardTitle}</h2>
+                {gallery.items?.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {gallery.items.map((src, i) => <img key={i} src={src} alt="" className="w-full h-24 object-cover rounded-xl" />)}
+                  </div>
+                ) : (
+                  <EmptyHint theme={pageTheme} height="h-20">{builderContent.emptyGalleryHint}</EmptyHint>
+                )}
+              </Slot>
+            ) : (
+              <AddSlot theme={pageTheme} onClick={() => onInsertNew(layoutKeys.gallery)} className="mb-8 h-16">
+                {builderContent.addGalleryLabel}
+              </AddSlot>
+            )}
+
+            {/* LOCATION DETAILS — same reasoning, fixed position before the stream. */}
+            <div className="rounded-2xl border p-6 mb-8" style={{ borderColor: pageTheme.borderColor, backgroundColor: pageTheme.cardBackground }}>
+              <h2 className="text-2xl font-serif mb-3" style={{ color: pageTheme.accentColor }}>{pageContent.mapCardTitle}</h2>
+              <div className="grid sm:grid-cols-2 gap-4">
+                {meetingPoint ? (
+                  <Slot selected={meetingPoint.id === selectedId} onClick={() => onSelect(meetingPoint.id)}>
+                    <span className="text-[10px] uppercase tracking-widest block mb-1 font-bold" style={{ color: pageTheme.mutedColor }}>{pageContent.startingPointLabel}</span>
+                    {meetingPoint.value
+                      ? <p className="font-medium">{meetingPoint.value}</p>
+                      : <EmptyHint theme={pageTheme} compact>{builderContent.emptyLocationHint}</EmptyHint>}
+                  </Slot>
+                ) : (
+                  <AddSlot theme={pageTheme} onClick={() => onInsertNew(layoutKeys.meetingPoint)} className="h-14">
+                    {builderContent.addMeetingPointLabel}
+                  </AddSlot>
+                )}
+                {location ? (
+                  <Slot selected={location.id === selectedId} onClick={() => onSelect(location.id)}>
+                    <span className="text-[10px] uppercase tracking-widest block mb-1 font-bold" style={{ color: pageTheme.mutedColor }}>{pageContent.endingPointLabel}</span>
+                    {location.value
+                      ? <p className="font-medium">{location.value}</p>
+                      : <EmptyHint theme={pageTheme} compact>{builderContent.emptyLocationHint}</EmptyHint>}
+                  </Slot>
+                ) : (
+                  <AddSlot theme={pageTheme} onClick={() => onInsertNew(layoutKeys.location)} className="h-14">
+                    {builderContent.addLocationLabel}
+                  </AddSlot>
+                )}
+              </div>
             </div>
 
             {/* STREAM — the free, reorderable block flow */}
@@ -253,55 +337,6 @@ export default function ExperienceCanvas({
               ))}
 
               {dropIndex === blocks.length && streamBlocks.length > 0 && <DropBar theme={pageTheme} />}
-            </div>
-
-            {/* GALLERY */}
-            {gallery ? (
-              <Slot selected={gallery.id === selectedId} onClick={() => onSelect(gallery.id)} className="mb-8">
-                <h2 className="text-2xl font-serif mb-3" style={{ color: pageTheme.accentColor }}>{pageContent.galleryCardTitle}</h2>
-                {gallery.items?.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {gallery.items.map((src, i) => <img key={i} src={src} alt="" className="w-full h-24 object-cover rounded-xl" />)}
-                  </div>
-                ) : (
-                  <EmptyHint theme={pageTheme} height="h-20">{builderContent.emptyGalleryHint}</EmptyHint>
-                )}
-              </Slot>
-            ) : (
-              <AddSlot theme={pageTheme} onClick={() => onInsertNew(layoutKeys.gallery)} className="mb-8 h-16">
-                {builderContent.addGalleryLabel}
-              </AddSlot>
-            )}
-
-            {/* LOCATION DETAILS */}
-            <div className="rounded-2xl border p-6" style={{ borderColor: pageTheme.borderColor, backgroundColor: pageTheme.cardBackground }}>
-              <h2 className="text-2xl font-serif mb-3" style={{ color: pageTheme.accentColor }}>{pageContent.mapCardTitle}</h2>
-              <div className="grid sm:grid-cols-2 gap-4">
-                {meetingPoint ? (
-                  <Slot selected={meetingPoint.id === selectedId} onClick={() => onSelect(meetingPoint.id)}>
-                    <span className="text-[10px] uppercase tracking-widest block mb-1 font-bold" style={{ color: pageTheme.mutedColor }}>{pageContent.startingPointLabel}</span>
-                    {meetingPoint.value
-                      ? <p className="font-medium">{meetingPoint.value}</p>
-                      : <EmptyHint theme={pageTheme} compact>{builderContent.emptyLocationHint}</EmptyHint>}
-                  </Slot>
-                ) : (
-                  <AddSlot theme={pageTheme} onClick={() => onInsertNew(layoutKeys.meetingPoint)} className="h-14">
-                    {builderContent.addMeetingPointLabel}
-                  </AddSlot>
-                )}
-                {location ? (
-                  <Slot selected={location.id === selectedId} onClick={() => onSelect(location.id)}>
-                    <span className="text-[10px] uppercase tracking-widest block mb-1 font-bold" style={{ color: pageTheme.mutedColor }}>{pageContent.endingPointLabel}</span>
-                    {location.value
-                      ? <p className="font-medium">{location.value}</p>
-                      : <EmptyHint theme={pageTheme} compact>{builderContent.emptyLocationHint}</EmptyHint>}
-                  </Slot>
-                ) : (
-                  <AddSlot theme={pageTheme} onClick={() => onInsertNew(layoutKeys.location)} className="h-14">
-                    {builderContent.addLocationLabel}
-                  </AddSlot>
-                )}
-              </div>
             </div>
           </div>
 
@@ -606,7 +641,7 @@ function CartSkeleton({ editable, requiresPayment, price, currency, capacityTota
             {pageContent.individualLabel}
           </div>
           <div className="py-2 rounded-lg text-xs font-bold uppercase tracking-widest text-center border" style={{ borderColor: pageTheme.borderColor, color: pageTheme.mutedColor }}>
-            {pageContent.groupLabel}
+            {pageContent.privateLabel}
           </div>
         </div>
         <div className="h-10 rounded-xl mb-4 opacity-30" style={{ backgroundColor: pageTheme.borderColor }} />
@@ -615,7 +650,7 @@ function CartSkeleton({ editable, requiresPayment, price, currency, capacityTota
     );
   }
 
-  const registrationLabel = { Individual: "Individual only", Group: "Group (private) only", Both: "Individual + Group" }[registrationType] || registrationType;
+  const registrationLabel = { Individual: "Individual only", Private: "Private only", Both: "Individual + Private" }[registrationType] || registrationType;
 
   return (
     <div className="lg:sticky lg:top-4 rounded-3xl p-6 border-2" style={{ borderColor: pageTheme.borderColor, backgroundColor: pageTheme.cardBackground }}>

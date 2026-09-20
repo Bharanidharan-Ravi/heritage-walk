@@ -61,7 +61,7 @@ export const experienceBuilderConfig = {
     emptyGalleryHint: "No images yet — click, then drag & drop or browse for some in the panel →",
     emptyLocationHint: "Not set — click, then fill it in on the right →",
     cartSkeletonTitle: "Booking widget",
-    cartSkeletonNote: "Visitors pick Individual/Group + a ticket count here. Price & capacity are set by an Admin.",
+    cartSkeletonNote: "Visitors pick Individual/Private + a ticket count here. Price & capacity are set by an Admin.",
 
     // Schedule dates used to live in their own top toolbar/canvas slot; now
     // part of the cart widget's editor (ExperienceBlockSettings's CartEditor)
@@ -87,12 +87,20 @@ export const EXPERIENCE_TYPES = [
 export const BLOCK_SHAPES = {
   text: { empty: () => "" },
   richtext: { empty: () => "" },
+  // Rich HTML — value is a sanitized-on-render HTML string produced by the
+  // on-canvas RichTextEditor (Admin/ExperienceBuilder/RichTextEditor.jsx),
+  // not the sidebar's plain textarea. Currently only the two description
+  // blocks below use it.
+  richHtml: { empty: () => "" },
   imageUrl: { empty: () => "" },
   videoUrl: { empty: () => "" },
   date: { empty: () => "" },
   time: { empty: () => "" },
   number: { empty: () => "" },
-  toggle: { empty: () => false },
+  // Note: the actual default for a newly-dropped toggle block is set in
+  // useExperienceBuilder.js's createBlock (true / "Yes"), not here — this
+  // `empty()` isn't currently called for non-items-based shapes.
+  toggle: { empty: () => true },
   select: { empty: () => "" },
   gallery: { itemsBased: true, empty: () => [] },
   repeatableList: { itemsBased: true, empty: () => [] },
@@ -106,8 +114,8 @@ export const isItemsBased = (shapeType) => Boolean(BLOCK_SHAPES[shapeType]?.item
 // Shared across every experience type. `group` is the palette section label.
 const BLOCK_POOL = [
   { key: "title", group: "Basic", paletteLabel: "Title", icon: "heading", shape: "text", label: "Title", width: 12 },
-  { key: "shortDescription", group: "Basic", paletteLabel: "Short desc.", icon: "text", shape: "text", label: "Short Description", width: 12 },
-  { key: "fullDescription", group: "Basic", paletteLabel: "Full desc.", icon: "textarea", shape: "richtext", label: "Full Description", width: 12 },
+  { key: "shortDescription", group: "Basic", paletteLabel: "Short desc.", icon: "text", shape: "richHtml", label: "Short Description", width: 12 },
+  { key: "fullDescription", group: "Basic", paletteLabel: "Full desc.", icon: "textarea", shape: "richHtml", label: "Full Description", width: 12 },
   { key: "heroImage", group: "Basic", paletteLabel: "Hero image", icon: "image", shape: "imageUrl", label: "Hero Image", width: 12 },
   { key: "gallery", group: "Basic", paletteLabel: "Gallery", icon: "gallery", shape: "gallery", label: "Image Gallery", width: 12 },
   { key: "video", group: "Basic", paletteLabel: "Video", icon: "video", shape: "videoUrl", label: "Video", width: 12 },
@@ -142,13 +150,18 @@ const WALK_ONLY = [
   { key: "itinerary", group: "Walk Info", paletteLabel: "Itinerary", icon: "modules", shape: "modules", label: "Itinerary / Plan", width: 12 },
   { key: "difficulty", group: "Walk Info", paletteLabel: "Difficulty", icon: "difficulty", shape: "select", label: "Difficulty", width: 4, options: ["Easy", "Moderate", "Difficult"] },
   { key: "distance", group: "Walk Info", paletteLabel: "Distance", icon: "distance", shape: "text", label: "Distance", width: 4 },
-  { key: "ageRequirement", group: "Walk Info", paletteLabel: "Age req.", icon: "text", shape: "text", label: "Age Requirement", width: 4 },
-  { key: "kidsFriendly", group: "Walk Info", paletteLabel: "Kids OK", icon: "toggle", shape: "toggle", label: "Kids Friendly", width: 6 },
+  // Kept typed since it's the one quick fact with a real answer ("18+", "All ages", …).
+  { key: "ageRequirement", group: "Walk Info", paletteLabel: "Age req.", icon: "age", shape: "text", label: "Age Requirement", width: 4 },
+  // These four are drag-in-and-toggle only — no typing — so they render on
+  // the public page as a compact icon row (see experiencePublic.config.jsx's
+  // `quickFacts` and ExperiencePageView.jsx's QuickFactsGrid) rather than as
+  // their own text sections.
+  { key: "kidsFriendly", group: "Walk Info", paletteLabel: "Kids OK", icon: "kids", shape: "toggle", label: "Kids Friendly", width: 6 },
   { key: "accessibility", group: "Walk Info", paletteLabel: "Accessible", icon: "accessibility", shape: "toggle", label: "Accessibility", width: 6 },
   { key: "languages", group: "Walk Info", paletteLabel: "Languages", icon: "languages", shape: "repeatableList", label: "Languages", width: 12 },
   { key: "whatToBring", group: "Walk Info", paletteLabel: "What to bring", icon: "luggage", shape: "repeatableList", label: "What to Bring", width: 12 },
-  { key: "accommodation", group: "Walk Info", paletteLabel: "Accommodation", icon: "text", shape: "richtext", label: "Accommodation", width: 12 },
-  { key: "food", group: "Walk Info", paletteLabel: "Food", icon: "text", shape: "richtext", label: "Food / Refreshments", width: 12 },
+  { key: "accommodation", group: "Walk Info", paletteLabel: "Accommodation", icon: "accommodation", shape: "toggle", label: "Accommodation", width: 6 },
+  { key: "food", group: "Walk Info", paletteLabel: "Food", icon: "lunch", shape: "toggle", label: "Food & Refreshments", width: 6 },
 ];
 
 const SEMINAR_ONLY = [

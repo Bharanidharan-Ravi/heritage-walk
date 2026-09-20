@@ -21,6 +21,14 @@ export const experiencePublicConfig = {
     accentColor: "#caa863",
     borderColor: "rgba(11, 23, 32, 0.1)",
     dangerColor: "#b3453d",
+
+    // iOS-style frosted glass, used for the content cards on the experience
+    // page (Overview, itinerary/FAQ/etc. sections, gallery, map, quick
+    // facts) — translucent + blurred instead of a flat white card, so the
+    // cream page background shows through softly.
+    glassBackground: "rgba(255, 255, 255, 0.5)",
+    glassBorder: "rgba(255, 255, 255, 0.7)",
+    glassInsetBackground: "rgba(255, 255, 255, 0.35)",
   },
 
   content: {
@@ -54,11 +62,20 @@ export const experiencePublicConfig = {
     // "numberOfAttendees") remains the one place that actually records it.
     registrationTypeLabel: "Registration type",
     individualLabel: "Individual",
-    groupLabel: "Group",
+    privateLabel: "Private",
     ticketsLabel: "Number of people",
     experienceDateLabel: "Experience date",
     totalLabel: "Total",
     dateNotSetLabel: "Date to be announced",
+
+    // Private registration needs an explicit slot pick — Book Now stays
+    // locked until one is chosen (see ExperiencePageView.jsx's BookingCard).
+    chooseSlotLabel: "Choose a date",
+    noSlotsAvailableLabel: "No dates available yet — check back soon.",
+    previousSlotsLabel: "Show earlier dates",
+    nextSlotsLabel: "Show later dates",
+    chooseSlotToBookLabel: "Choose a date to book",
+    selectSlotHint: "Select a date above to continue.",
 
     bookNowLabel: "Book Now",
     checkAvailabilityLabel: "Book Now",
@@ -76,8 +93,7 @@ export const experiencePublicConfig = {
 
     // Admin "Live Preview" only (ExperiencePreviewModal → ExperiencePageView
     // previewMode) — price/capacity/booking aren't set until after Admin
-    // approval, and there's no hero image yet on a brand-new draft.
-    heroPlaceholderLabel: "Hero image — add one from the block settings panel to see it here",
+    // approval.
     previewPriceNote: "Price & capacity are set by an Admin after approval.",
     previewBookLabel: "Book Now",
     previewBookNote: "Booking becomes active once this experience is published.",
@@ -133,6 +149,23 @@ export const experiencePublicConfig = {
     distance: "distance",
     duration: "duration",
     courseDuration: "courseDuration",
+  },
+
+  // "At a glance" icon row (ExperiencePageView.jsx's QuickFactsGrid) — these
+  // Walk Info blocks are drag-in-and-toggle only (ageRequirement is the one
+  // exception with a typed value), so they read better as compact icon tiles
+  // than as their own full-width text sections. `icon` keys into
+  // Config/fieldIcons.jsx. Order here is the display order, independent of
+  // whatever order the admin dropped the blocks in.
+  quickFacts: {
+    title: "Good to Know",
+    keys: [
+      { key: "ageRequirement", icon: "age" },
+      { key: "kidsFriendly", icon: "kids" },
+      { key: "accessibility", icon: "accessibility" },
+      { key: "accommodation", icon: "accommodation" },
+      { key: "food", icon: "lunch" },
+    ],
   },
 
   // repeatableList blocks that read better as a tick/cross list (like

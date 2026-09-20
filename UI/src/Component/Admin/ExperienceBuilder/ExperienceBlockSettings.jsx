@@ -15,8 +15,8 @@ import { TITLE_BLOCK_ID, CART_BLOCK_ID } from "./ExperienceCanvas";
 
 const REGISTRATION_TYPES = [
   { value: "Individual", label: "Individual only" },
-  { value: "Group", label: "Group (private) only" },
-  { value: "Both", label: "Individual + Group" },
+  { value: "Private", label: "Private only" },
+  { value: "Both", label: "Individual + Private" },
 ];
 
 /** One slot per calendar day from `start` to `end`, inclusive — the seed list
@@ -133,7 +133,7 @@ function CartEditor({
   onSave, saving, error,
 }) {
   const needsSlots = registrationType !== "Individual";
-  const needsBookingEndDate = registrationType !== "Group";
+  const needsBookingEndDate = registrationType !== "Private";
   const canGenerate = Boolean(startDate && endDate);
 
   const generateFromSchedule = () => onSlotsChange(dailySlotsBetween(startDate, endDate));
@@ -186,7 +186,7 @@ function CartEditor({
           covers both — see handleSaveCart in AdminExperienceBuilder.jsx. */}
       {needsBookingEndDate && (
         <Labelled label={content.bookingEndDateLabel} help="Deadline for Individual bookings.">
-          <input type="date" value={bookingEndDate} onChange={(e) => onBookingEndDateChange(e.target.value)} className={control.input} />
+          <input type="date" value={bookingEndDate} onChange={(e) => onBookingEndDateChange(e.target.value)} className={control.input} style={{ colorScheme: "dark" }} />
         </Labelled>
       )}
 
@@ -194,20 +194,20 @@ function CartEditor({
         <>
           <div className="grid grid-cols-2 gap-1.5">
             <Labelled label={content.startDateLabel}>
-              <input type="date" value={startDate} onChange={(e) => onStartDateChange(e.target.value)} className={control.input} />
+              <input type="date" value={startDate} onChange={(e) => onStartDateChange(e.target.value)} className={control.input} style={{ colorScheme: "dark" }} />
             </Labelled>
             <Labelled label={content.endDateLabel}>
-              <input type="date" value={endDate} onChange={(e) => onEndDateChange(e.target.value)} className={control.input} />
+              <input type="date" value={endDate} onChange={(e) => onEndDateChange(e.target.value)} className={control.input} style={{ colorScheme: "dark" }} />
             </Labelled>
           </div>
 
           <div>
-            <label className={control.label}>Bookable dates (Group)</label>
+            <label className={control.label}>Bookable dates (Private)</label>
             {slots.length === 0 && <p className={`${control.help} mb-1`}>No dates yet — generate from Start/End date above, or add one manually.</p>}
             <div className={adminUi.stack.xs}>
               {slots.map((s, i) => (
                 <div key={i} className="flex items-center gap-1">
-                  <input type="date" value={s} onChange={(e) => setSlotAt(i, e.target.value)} className={control.inputSm} />
+                  <input type="date" value={s} onChange={(e) => setSlotAt(i, e.target.value)} className={control.inputSm} style={{ colorScheme: "dark" }} />
                   <RowButton label="Remove slot" danger onClick={() => removeSlotAt(i)}>✕</RowButton>
                 </div>
               ))}
@@ -245,6 +245,12 @@ function BlockValueEditor({ block, patch }) {
         </Labelled>
       );
 
+    // richHtml (Short/Full description) is edited directly on the canvas —
+    // font, style, weight, size, line height, emoji — via RichTextEditor,
+    // not here. See Admin/ExperienceBuilder/RichTextEditor.jsx.
+    case "richHtml":
+      return <p className={control.help}>Edit this block's text directly on the canvas — click into it to see the formatting toolbar.</p>;
+
     case "number":
       return (
         <Labelled label="Value">
@@ -255,23 +261,20 @@ function BlockValueEditor({ block, patch }) {
     case "date":
       return (
         <Labelled label="Value">
-          <input type="date" value={block.value} onChange={(e) => patch({ value: e.target.value })} className={control.input} />
+          <input type="date" value={block.value} onChange={(e) => patch({ value: e.target.value })} className={control.input} style={{ colorScheme: "dark" }} />
         </Labelled>
       );
 
     case "time":
       return (
         <Labelled label="Value">
-          <input type="time" value={block.value} onChange={(e) => patch({ value: e.target.value })} className={control.input} />
+          <input type="time" value={block.value} onChange={(e) => patch({ value: e.target.value })} className={control.input} style={{ colorScheme: "dark" }} />
         </Labelled>
       );
 
     case "toggle":
       return (
-        <label className="flex items-center gap-1.5 cursor-pointer">
-          <input type="checkbox" checked={Boolean(block.value)} onChange={(e) => patch({ value: e.target.checked })} className={control.checkbox} />
-          <span className={text.body}>{block.value ? "Yes" : "No"}</span>
-        </label>
+        <ToggleSwitch checked={Boolean(block.value)} onChange={(v) => patch({ value: v })} />
       );
 
     case "select":
@@ -313,6 +316,35 @@ function BlockValueEditor({ block, patch }) {
     default:
       return null;
   }
+}
+
+/** Pill switch for `shape: "toggle"` blocks (Kids Friendly, Accessibility,
+ *  Accommodation, Food & Refreshments, Certificate Provided, ...) — a track
+ *  + sliding knob instead of a plain checkbox, with the Yes/No state spelled
+ *  out beside it so it reads the same at a glance either way. */
+function ToggleSwitch({ checked, onChange }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="flex items-center gap-2 cursor-pointer"
+    >
+      <span
+        className="relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors"
+        style={{ backgroundColor: checked ? theme.accentColor : theme.borderColor }}
+      >
+        <span
+          className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
+          style={{ transform: checked ? "translateX(18px)" : "translateX(2px)" }}
+        />
+      </span>
+      <span className={text.body} style={{ color: checked ? theme.accentColor : theme.mutedColor }}>
+        {checked ? "Yes" : "No"}
+      </span>
+    </button>
+  );
 }
 
 function Labelled({ label, help, children }) {

@@ -12,3 +12,22 @@
   padding: 0;
   overflow-x: hidden; /* Prevents horizontal scrollbar */
 }
+
+/* Minimal scrollbars everywhere (the admin builder's independently-scrolling
+   palette/canvas/settings panes made the default OS scrollbar width stand
+   out) — thin in Firefox, a 2px WebKit bar instead of the usual ~15px one. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 128, 0.5) transparent;
+}
+*::-webkit-scrollbar {
+  width: 2px;
+  height: 2px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(128, 128, 128, 0.5);
+  border-radius: 9999px;
+}

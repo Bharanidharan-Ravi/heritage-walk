@@ -36,6 +36,7 @@ namespace ArchaeoTrails.Api.Controllers
 
         // POST /api/users
         [HttpPost]
+        [AllowAnonymous]
         public async Task<IActionResult> Create([FromBody] CreateUserRequest request)
         {
             var result = await _userManagementService.CreateAsync(request);
