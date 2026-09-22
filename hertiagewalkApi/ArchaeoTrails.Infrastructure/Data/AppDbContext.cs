@@ -1,5 +1,6 @@
 using System;
 using ArchaeoTrails.Domain.Entities;
+using ArchaeoTrails.Infrastructure.Data.Configurations;
 using ArchaeoTrails.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -23,11 +24,14 @@ namespace ArchaeoTrails.Infrastructure.Data
         public DbSet<FormTemplate> FormTemplates => Set<FormTemplate>();
         public DbSet<FormSubmission> FormSubmissions => Set<FormSubmission>();
         public DbSet<ExperienceTemplate> ExperienceTemplates => Set<ExperienceTemplate>();
+        public DbSet<PaymentSettings> PaymentSettings => Set<PaymentSettings>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             // Required first — sets up the AspNetUsers/AspNetRoles/... tables.
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.ApplyConfiguration(new PaymentSettingsConfiguration());
 
             modelBuilder.Entity<ApplicationUser>(entity =>
             {

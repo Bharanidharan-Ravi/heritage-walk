@@ -3,6 +3,8 @@ using ArchaeoTrails.Api.Debugging;
 using ArchaeoTrails.Api.Hubs;
 using ArchaeoTrails.Api.RealTime;
 using ArchaeoTrails.Application.Interfaces;
+using ArchaeoTrails.Application.Services;
+using ArchaeoTrails.Application.Services.Pricing;
 using ArchaeoTrails.Domain.Constants;
 using ArchaeoTrails.Infrastructure.Data;
 using ArchaeoTrails.Infrastructure.Identity;
@@ -65,6 +67,16 @@ builder.Services.AddScoped<IFormTemplateRepository, EfFormTemplateRepository>();
 builder.Services.AddScoped<IFormSubmissionRepository, EfFormSubmissionRepository>();
 builder.Services.AddScoped<IPaymentService, RazorpayPaymentService>();
 builder.Services.AddScoped<IQrCodeService, QrCodeService>();
+
+// --- Payment & Pricing (phase 1: configuration + pricing engine only) ------
+// No gateway calls yet; Cashfree credentials will come from user-secrets /
+// App Service config in the next phase, never from PaymentSettings.
+builder.Services.AddScoped<IPaymentSettingsRepository, EfPaymentSettingsRepository>();
+builder.Services.AddScoped<IPaymentSettingsService, PaymentSettingsService>();
+builder.Services.AddSingleton<IGatewayCostStrategy, StandardGatewayCostStrategy>();
+builder.Services.AddSingleton<IGatewayCostStrategy, CurrentOfferGatewayCostStrategy>();
+builder.Services.AddSingleton<IGatewayCostStrategy, CustomGatewayCostStrategy>();
+builder.Services.AddSingleton<IPricingService, PricingService>();
 
 // --- Experiences module (Walk/Seminar/Course builder + approval workflow) ---
 // Sanity:WriteToken is placeholder-only ("REPLACE_ME") in appsettings.json —

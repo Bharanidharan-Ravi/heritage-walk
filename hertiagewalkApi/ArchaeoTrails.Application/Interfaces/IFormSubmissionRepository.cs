@@ -19,6 +19,9 @@ namespace ArchaeoTrails.Application.Interfaces
         /// </summary>
         Task<FormSubmission?> TryCreateWithCapacityAsync(FormSubmission submission, Guid experienceTemplateId);
 
+        /// <summary>Dates (UTC midnight) already taken by Private bookings on this form — pending-payment rows don't count.</summary>
+        Task<IReadOnlyList<DateTime>> GetBookedSlotsAsync(Guid formTemplateId);
+
         Task<FormSubmission?> GetByRazorpayOrderIdAsync(string razorpayOrderId);
         Task UpdateAsync(FormSubmission submission);
 

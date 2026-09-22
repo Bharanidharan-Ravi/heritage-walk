@@ -21,3 +21,35 @@ export function formatSimpleValue(block) {
   if (block.shape === "toggle") return block.value ? "Yes" : "No";
   return block.value;
 }
+
+/**
+ * The `experience`-shaped object ExperiencePageView / BookingCard read, built
+ * from the admin builder's current (unsaved) state. Shared by the Preview modal
+ * and the builder's Registration screen so both show the same booking card.
+ */
+export function buildPreviewExperience({
+  title, experienceType, blocks, startDate, endDate, bookingEndDate,
+  requiresPayment, price, currency, capacityTotal, registrationType,
+  privateSlots, privateMinPeople,
+}) {
+  const capacity = capacityTotal === "" || capacityTotal == null ? null : Number(capacityTotal);
+  return {
+    title,
+    type: experienceType,
+    contentBlocks: blocks,
+    startDate: startDate || null,
+    endDate: endDate || null,
+    bookingEndDate: bookingEndDate || null,
+    capacityRemaining: capacity,
+    capacityTotal: capacity,
+    requiresPayment: Boolean(requiresPayment),
+    price: requiresPayment ? Number(price) || 0 : 0,
+    currency: currency || "INR",
+    registrationType: registrationType || "Group",
+    slots: [],
+    privateSlots: privateSlots || [],
+    privateMinPeople: Number(privateMinPeople) || 1,
+    bookingEnabled: true,
+    linkedFormSlug: null,
+  };
+}

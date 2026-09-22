@@ -18,6 +18,7 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   getBlockByKey,
+  CART_OWNED_BLOCK_KEYS,
   isItemsBased,
   DEFAULT_EXPERIENCE_BLOCKS,
 } from "../../Config/experienceBuilder.config";
@@ -158,7 +159,7 @@ export function useExperienceBuilder(experienceType) {
     setStartDate(detail.startDate ? detail.startDate.slice(0, 10) : "");
     setEndDate(detail.endDate ? detail.endDate.slice(0, 10) : "");
     setBookingEndDate(detail.bookingEndDate ? detail.bookingEndDate.slice(0, 10) : "");
-    setBlocks(hydrateBlocks(detail.contentBlocks));
+    setBlocks(hydrateBlocks((detail.contentBlocks || []).filter((b) => !CART_OWNED_BLOCK_KEYS.includes(b.blockKey))));
     setSelectedId(null);
   }, []);
 

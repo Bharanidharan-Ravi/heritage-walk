@@ -13,8 +13,15 @@ export default function AdminLogin() {
 
   // Accounts sign in with their username, not their email — an Admin sets
   // that handle when provisioning the account (see AdminUsers.jsx).
-  const [userName, setUserName] = useState("");
-  const [password, setPassword] = useState("");
+  //
+  // Prefill only in a local `npm run dev` build (import.meta.env.DEV) — this
+  // page ships in every build including production, so the fallback here
+  // must stay "" outside dev. Vite statically replaces import.meta.env.DEV
+  // with `false` for `vite build`, so this branch (and the credential
+  // strings) are dead-code-eliminated out of the production bundle — same
+  // pattern as TestConsole.jsx's FormsCard.
+  const [userName, setUserName] = useState(import.meta.env.DEV ? "swathi2" : "");
+  const [password, setPassword] = useState(import.meta.env.DEV ? "Swathi@0202" : "");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 

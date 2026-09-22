@@ -43,11 +43,17 @@ namespace ArchaeoTrails.Application.Features.Experiences
 
         public Guid? LinkedFormTemplateId { get; set; }
 
-        /// <summary>"Individual" | "Private" | "Both" (case-insensitive).</summary>
-        public string RegistrationType { get; set; } = "Individual";
+        /// <summary>"Group" | "Private" | "Both" (case-insensitive; the legacy "Individual" is read as Group).</summary>
+        public string RegistrationType { get; set; } = "Group";
 
-        /// <summary>Bookable dates for Private registration — ignored when RegistrationType is Individual.</summary>
+        /// <summary>Bookable dates for Group registration — optional, ignored when RegistrationType is Private.</summary>
         public List<DateTime> Slots { get; set; } = new();
+
+        /// <summary>Bookable dates for Private registration — required when Private is offered.</summary>
+        public List<DateTime> PrivateSlots { get; set; } = new();
+
+        /// <summary>Minimum party size for a Private booking (at least 1).</summary>
+        public int PrivateMinPeople { get; set; } = 1;
     }
 
     public class RequestChangesRequest
@@ -78,8 +84,10 @@ namespace ArchaeoTrails.Application.Features.Experiences
         // it PUTs the whole SetExperiencePaymentRequest, so these need to come
         // back with the row or a price-only save from there would silently
         // reset registration type/slots to the default.
-        public string RegistrationType { get; set; } = "Individual";
+        public string RegistrationType { get; set; } = "Group";
         public List<DateTime> Slots { get; set; } = new();
+        public List<DateTime> PrivateSlots { get; set; } = new();
+        public int PrivateMinPeople { get; set; } = 1;
 
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
@@ -114,8 +122,10 @@ namespace ArchaeoTrails.Application.Features.Experiences
         public int? CapacityTotal { get; set; }
         public int? CapacityRemaining { get; set; }
         public Guid? LinkedFormTemplateId { get; set; }
-        public string RegistrationType { get; set; } = "Individual";
+        public string RegistrationType { get; set; } = "Group";
         public List<DateTime> Slots { get; set; } = new();
+        public List<DateTime> PrivateSlots { get; set; } = new();
+        public int PrivateMinPeople { get; set; } = 1;
 
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
@@ -185,10 +195,14 @@ namespace ArchaeoTrails.Application.Features.Experiences
         public int? CapacityTotal { get; set; }
         public int? CapacityRemaining { get; set; }
 
-        /// <summary>"Individual" | "Private" | "Both" — which option(s) the cart offers.</summary>
-        public string RegistrationType { get; set; } = "Individual";
-        /// <summary>Bookable dates for Private registration; empty when RegistrationType is Individual.</summary>
+        /// <summary>"Group" | "Private" | "Both" — which option(s) the cart offers.</summary>
+        public string RegistrationType { get; set; } = "Group";
+        /// <summary>Bookable dates for Group registration; may be empty (then only the booking deadline gates it).</summary>
         public List<DateTime> Slots { get; set; } = new();
+        /// <summary>Bookable dates for Private registration; empty when Private isn't offered.</summary>
+        public List<DateTime> PrivateSlots { get; set; } = new();
+        /// <summary>Smallest party a Private booking accepts.</summary>
+        public int PrivateMinPeople { get; set; } = 1;
 
         /// <summary>true once a registration form is linked and still accepting bookings (not past BookingEndDate, seats left).</summary>
         public bool BookingEnabled { get; set; }

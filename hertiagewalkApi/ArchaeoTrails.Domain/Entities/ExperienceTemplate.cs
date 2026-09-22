@@ -59,19 +59,29 @@ namespace ArchaeoTrails.Domain.Entities
         /// <summary>The registration form for this experience — reuses the existing Form Generator.</summary>
         public Guid? LinkedFormTemplateId { get; set; }
 
-        /// <summary>Individual-only, Private-only, or Both — set together with payment/capacity.</summary>
-        public RegistrationType RegistrationType { get; set; } = RegistrationType.Individual;
+        /// <summary>Group-only, Private-only, or Both — set together with payment/capacity.</summary>
+        public RegistrationType RegistrationType { get; set; } = RegistrationType.Group;
 
         /// <summary>
-        /// JSON array of ISO date strings — the bookable dates for Private
-        /// registration. Seeded from StartDate..EndDate (one per day) by the
+        /// JSON array of ISO date strings — the bookable dates for GROUP
+        /// registration (optional: empty means Group is gated by BookingEndDate
+        /// alone, as it always was). Seeded from StartDate..EndDate (one per day) by the
         /// frontend, then freely edited (a date removed, or extra ones added
         /// for the same day) — deliberately NOT normalized into SQL rows, same
         /// call as ContentBlocksJson, since a slot here is just a date, not an
         /// entity with its own capacity. Ignored when RegistrationType is
-        /// Individual, where BookingEndDate alone gates the booking deadline.
+        /// Private.
         /// </summary>
         public string SlotsJson { get; set; } = "[]";
+
+        /// <summary>
+        /// Same shape as SlotsJson, but the bookable dates for PRIVATE
+        /// registration. Required (non-empty) whenever Private is offered.
+        /// </summary>
+        public string PrivateSlotsJson { get; set; } = "[]";
+
+        /// <summary>Smallest party a Private booking accepts (at least 1).</summary>
+        public int PrivateMinPeople { get; set; } = 1;
 
         // ---- Schedule ----
 

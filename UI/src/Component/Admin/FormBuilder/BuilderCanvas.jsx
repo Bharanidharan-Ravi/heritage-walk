@@ -14,9 +14,24 @@
 import React, { useState } from "react";
 import { formBuilderConfig, blockMetaFor, isDisplayOnly } from "../../Config/formBuilder.config";
 import { adminUi } from "../../Config/adminUi.config";
+import { experiencePublicConfig } from "../../Config/experiencePublic.config";
 import { RenderedField } from "../../Sections/FormRenderer";
 
-const { theme } = formBuilderConfig;
+const { theme: darkTheme } = formBuilderConfig;
+const { theme: pageTheme } = experiencePublicConfig;
+
+// `light` draws the canvas on the cream public page (experience registration
+// screen) instead of the dark form-builder chrome — same layout, page colours.
+const lightTheme = {
+  ...darkTheme,
+  canvasBackground: "transparent",
+  cardBackground: pageTheme.cardBackground,
+  borderColor: pageTheme.borderColor,
+  strongBorderColor: pageTheme.accentColor,
+  mutedColor: pageTheme.mutedColor,
+  accentColor: pageTheme.accentColor,
+  dangerColor: pageTheme.dangerColor,
+};
 const { text, control } = adminUi;
 
 // Canvas cards are inert previews, so composite blocks read their sub-answers
@@ -36,7 +51,10 @@ export default function BuilderCanvas({
   drag,          // { kind: "new", blockKey } | { kind: "move", index } | null
   onDragEnd,
   onDragStartMove,
+  light = false,
 }) {
+  const theme = light ? lightTheme : darkTheme;
+
   // Insertion slot the drop would land in: 0..fields.length, or null.
   const [dropIndex, setDropIndex] = useState(null);
 
@@ -74,22 +92,24 @@ export default function BuilderCanvas({
         if (!e.currentTarget.contains(e.relatedTarget)) clearDrop();
       }}
       onDrop={handleDropOnCanvas}
-      className={`rounded-lg border ${adminUi.pad.card} min-h-80`}
-      style={{ backgroundColor: theme.canvasBackground, borderColor: theme.borderColor }}
+      className={`rounded-lg ${light ? "" : "border"} ${adminUi.pad.card} min-h-80`}
+      style={{ backgroundColor: theme.canvasBackground, borderColor: theme.borderColor, color: light ? pageTheme.textColor : undefined }}
     >
       {fields.length === 0 ? (
-        <EmptyCanvas active={Boolean(drag)} />
+        <EmptyCanvas active={Boolean(drag)} theme={theme} />
       ) : (
         <div className="grid grid-cols-12 gap-2 items-start">
           {fields.map((field, index) => (
             <React.Fragment key={field.id}>
-              {dropIndex === index && <DropIndicator />}
+              {dropIndex === index && <DropIndicator theme={theme} />}
 
               <div
                 className={formBuilderConfig.spanClasses[field.width] || formBuilderConfig.spanClasses[12]}
                 onDragOver={(e) => handleDragOverCard(e, index)}
               >
                 <FieldCard
+                  theme={theme}
+                  light={light}
                   field={field}
                   index={index}
                   total={fields.length}
@@ -115,14 +135,14 @@ export default function BuilderCanvas({
             </React.Fragment>
           ))}
 
-          {dropIndex === fields.length && <DropIndicator />}
+          {dropIndex === fields.length && <DropIndicator theme={theme} />}
         </div>
       )}
     </div>
   );
 }
 
-function DropIndicator() {
+function DropIndicator({ theme }) {
   return (
     <div className="col-span-12 sm:col-span-1 h-full min-h-10 flex items-center" aria-hidden="true">
       <div
@@ -133,7 +153,7 @@ function DropIndicator() {
   );
 }
 
-function EmptyCanvas({ active }) {
+function EmptyCanvas({ active, theme }) {
   const { content } = formBuilderConfig;
   return (
     <div
@@ -147,6 +167,7 @@ function EmptyCanvas({ active }) {
 }
 
 function FieldCard({
+  theme, light,
   field, index, total, selected, dragging,
   onSelect, onDragStart, onDragEnd, onNudge, onRemove, onDuplicate, onWidthChange,
 }) {
@@ -177,17 +198,17 @@ function FieldCard({
         )}
 
         <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-          <CardButton label="Move earlier" disabled={index === 0} onClick={() => onNudge(field.id, -1)}>◀</CardButton>
-          <CardButton label="Move later" disabled={index === total - 1} onClick={() => onNudge(field.id, 1)}>▶</CardButton>
-          <CardButton label="Duplicate" onClick={() => onDuplicate(field.id)}>⧉</CardButton>
-          <CardButton label="Delete" danger onClick={() => onRemove(field.id)}>✕</CardButton>
+          <CardButton theme={theme} label="Move earlier" disabled={index === 0} onClick={() => onNudge(field.id, -1)}>◀</CardButton>
+          <CardButton theme={theme} label="Move later" disabled={index === total - 1} onClick={() => onNudge(field.id, 1)}>▶</CardButton>
+          <CardButton theme={theme} label="Duplicate" onClick={() => onDuplicate(field.id)}>⧉</CardButton>
+          <CardButton theme={theme} label="Delete" danger onClick={() => onRemove(field.id)}>✕</CardButton>
         </div>
       </div>
 
       {/* The real control, so the canvas already looks like the finished form —
           at the console's own compact scale, not the public page's. */}
       <div className="pointer-events-none">
-        <RenderedField field={field} value="" values={EMPTY_VALUES} disabled compact />
+        <RenderedField light={light} field={field} value="" values={EMPTY_VALUES} disabled compact />
       </div>
 
       <div className="flex items-center gap-0.5 mt-1.5 pt-1 border-t" style={{ borderColor: theme.borderColor }}>
@@ -217,7 +238,7 @@ function FieldCard({
   );
 }
 
-function CardButton({ children, label, onClick, disabled, danger }) {
+function CardButton({ children, label, onClick, disabled, danger, theme }) {
   return (
     <button
       type="button"

@@ -10,13 +10,20 @@
 import React, { useRef, useState } from "react";
 import { experienceBuilderConfig, blockMetaFor } from "../../Config/experienceBuilder.config";
 import { adminUi } from "../../Config/adminUi.config";
+import { adminApi } from "../adminApi";
 import { useExperienceImageUpload, validateImageFile, ACCEPTED_IMAGE_TYPES } from "./imageUpload";
 import { TITLE_BLOCK_ID, CART_BLOCK_ID } from "./ExperienceCanvas";
 
+/** ₹12,345 / ₹1,079-style grouping — matches the message the pricing API itself uses. */
+function formatINR(amount) {
+  const n = Number(amount);
+  return Number.isFinite(n) ? new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(n) : amount;
+}
+
 const REGISTRATION_TYPES = [
-  { value: "Individual", label: "Individual only" },
+  { value: "Group", label: "Group only" },
   { value: "Private", label: "Private only" },
-  { value: "Both", label: "Individual + Private" },
+  { value: "Both", label: "Group + Private" },
 ];
 
 /** One slot per calendar day from `start` to `end`, inclusive — the seed list
@@ -48,12 +55,14 @@ export default function ExperienceBlockSettings({
   selectedId, title, onTitleChange,
   startDate, endDate, bookingEndDate, onStartDateChange, onEndDateChange, onBookingEndDateChange,
   hasExperienceId,
+  token,
   requiresPayment, onRequiresPaymentChange,
   price, onPriceChange,
   currency, onCurrencyChange,
   capacityTotal, onCapacityTotalChange,
   registrationType, onRegistrationTypeChange,
-  slots, onSlotsChange,
+  privateSlots, onPrivateSlotsChange,
+  privateMinPeople, onPrivateMinPeopleChange,
   onSaveCart, cartSaving, cartError,
 }) {
   if (selectedId === TITLE_BLOCK_ID) {
@@ -71,12 +80,14 @@ export default function ExperienceBlockSettings({
     return (
       <CartEditor
         hasExperienceId={hasExperienceId}
+        token={token}
         requiresPayment={requiresPayment} onRequiresPaymentChange={onRequiresPaymentChange}
         price={price} onPriceChange={onPriceChange}
         currency={currency} onCurrencyChange={onCurrencyChange}
         capacityTotal={capacityTotal} onCapacityTotalChange={onCapacityTotalChange}
         registrationType={registrationType} onRegistrationTypeChange={onRegistrationTypeChange}
-        slots={slots} onSlotsChange={onSlotsChange}
+        privateSlots={privateSlots} onPrivateSlotsChange={onPrivateSlotsChange}
+        privateMinPeople={privateMinPeople} onPrivateMinPeopleChange={onPrivateMinPeopleChange}
         startDate={startDate} onStartDateChange={onStartDateChange}
         endDate={endDate} onEndDateChange={onEndDateChange}
         bookingEndDate={bookingEndDate} onBookingEndDateChange={onBookingEndDateChange}
@@ -121,25 +132,76 @@ export default function ExperienceBlockSettings({
  *  have an id yet (`hasExperienceId` false), same request Save Draft sends. */
 function CartEditor({
   hasExperienceId,
+  token,
   requiresPayment, onRequiresPaymentChange,
   price, onPriceChange,
   currency, onCurrencyChange,
   capacityTotal, onCapacityTotalChange,
   registrationType, onRegistrationTypeChange,
-  slots, onSlotsChange,
+  privateSlots, onPrivateSlotsChange,
+  privateMinPeople, onPrivateMinPeopleChange,
   startDate, onStartDateChange,
   endDate, onEndDateChange,
   bookingEndDate, onBookingEndDateChange,
   onSave, saving, error,
 }) {
-  const needsSlots = registrationType !== "Individual";
-  const needsBookingEndDate = registrationType !== "Private";
-  const canGenerate = Boolean(startDate && endDate);
+  const offersGroup = registrationType !== "Private";
+  const offersPrivate = registrationType !== "Group";
 
-  const generateFromSchedule = () => onSlotsChange(dailySlotsBetween(startDate, endDate));
-  const setSlotAt = (i, value) => onSlotsChange(slots.map((s, idx) => (idx === i ? value : s)));
-  const removeSlotAt = (i) => onSlotsChange(slots.filter((_, idx) => idx !== i));
-  const addSlot = () => onSlotsChange([...slots, slots[slots.length - 1] || startDate || ""]);
+  // Three separate dates: Booking end date (Group deadline), Experience date
+  // (the day Group runs — saved as startDate) and the Private Start/End range,
+  // which only feeds slot generation. With Group offered the range is local to
+  // this editor (the slots themselves are what's saved); Private-only has no
+  // Experience date, so the range is startDate/endDate.
+  const slotDays = privateSlots.filter(Boolean).slice().sort();
+  const [rangeStart, setRangeStart] = useState(slotDays[0] || "");
+  const [rangeEnd, setRangeEnd] = useState(slotDays[slotDays.length - 1] || "");
+  const pStart = offersGroup ? rangeStart : startDate;
+  const pEnd = offersGroup ? rangeEnd : endDate;
+  const setPStart = offersGroup ? setRangeStart : onStartDateChange;
+  const setPEnd = offersGroup ? setRangeEnd : onEndDateChange;
+
+  // Pricing calculator — asks the admin payment-settings pricing engine
+  // (PricingService, via /api/admin/payment-settings/calculate-price) what a
+  // "base amount" (what this walk should net after platform + gateway fees)
+  // needs to become as a customer-facing price. Purely a helper: nothing here
+  // is saved on its own — picking a suggestion, or typing a custom price,
+  // just fills the existing Price field above, which "Save cart settings"
+  // already persists (and mirrors onto the linked registration form).
+  const [baseAmount, setBaseAmount] = useState("");
+  const [calc, setCalc] = useState(null);
+  const [calcLoading, setCalcLoading] = useState(false);
+  const [calcError, setCalcError] = useState("");
+
+  const runCalc = async () => {
+    const amount = Number(baseAmount);
+    if (!amount || amount <= 0) return;
+    setCalcLoading(true);
+    setCalcError("");
+    try {
+      const result = await adminApi.calculatePrice(token, {
+        baseAmount: amount,
+        customerAmount: price ? Number(price) : undefined,
+      });
+      setCalc(result);
+    } catch (err) {
+      // A price below the minimum comes back as a 400 with the calculation
+      // (suggestions + minimum) still attached under err.data.data — show
+      // that instead of just the error, so the suggestions stay usable.
+      if (err.data?.data) {
+        setCalc(err.data.data);
+      } else {
+        setCalcError(err.message || "Could not calculate suggested prices.");
+        setCalc(null);
+      }
+    } finally {
+      setCalcLoading(false);
+    }
+  };
+
+  // Live, client-side re-check against the last-fetched minimum whenever the
+  // admin edits Price by hand — no extra round-trip needed for this part.
+  const belowMinimum = calc && price !== "" && Number(price) < calc.minimumCustomerAmount;
 
   return (
     <aside className={`rounded-lg border ${adminUi.pad.panel} h-fit lg:sticky lg:top-4 ${adminUi.stack.sm}`} style={{ backgroundColor: theme.panelBackground, borderColor: theme.borderColor }}>
@@ -154,6 +216,66 @@ function CartEditor({
         <div className="flex items-center gap-1.5">
           <input value={currency} onChange={(e) => onCurrencyChange(e.target.value)} className={`${control.inputSm} w-16`} />
           <input type="number" min="1" step="0.01" placeholder="Price" value={price} onChange={(e) => onPriceChange(e.target.value)} className={control.inputSm} />
+        </div>
+      )}
+
+      {requiresPayment && belowMinimum && (
+        <p className={text.body} style={{ color: theme.dangerColor }}>
+          Customer price cannot be lower than the minimum required price of ₹{formatINR(calc.minimumCustomerAmount)}.
+        </p>
+      )}
+
+      {requiresPayment && (
+        <div className={`${adminUi.stack.xs} rounded-md border`} style={{ borderColor: theme.borderColor, padding: 8 }}>
+          <p className={text.micro} style={{ color: theme.mutedColor }}>Price calculator (optional)</p>
+          <p className={control.help}>
+            Enter what you want this walk to net after platform + gateway fees — the calculator suggests customer prices that cover them.
+          </p>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number" min="1" step="0.01" placeholder="Amount you want to receive"
+              value={baseAmount} onChange={(e) => setBaseAmount(e.target.value)}
+              className={control.inputSm}
+            />
+            <button type="button" onClick={runCalc} disabled={!baseAmount || calcLoading} className={control.btnLink}>
+              {calcLoading ? "Calculating…" : "Suggest prices"}
+            </button>
+          </div>
+
+          {calcError && <p className={text.body} style={{ color: theme.dangerColor }}>{calcError}</p>}
+
+          {calc && (
+            <div className={adminUi.stack.xs}>
+              <p className={text.body} style={{ color: theme.mutedColor }}>
+                Minimum customer price: <strong style={{ color: theme.textColor }}>₹{formatINR(calc.minimumCustomerAmount)}</strong>
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {calc.suggestedPrices.map((s) => (
+                  <button
+                    key={s.strategy}
+                    type="button"
+                    onClick={() => onPriceChange(String(s.amount))}
+                    className={text.body}
+                    style={{
+                      border: `1px solid ${theme.borderColor}`,
+                      borderRadius: 6,
+                      padding: "2px 8px",
+                      backgroundColor: Number(price) === s.amount ? theme.accentColor : "transparent",
+                      color: Number(price) === s.amount ? theme.pageBackground : theme.textColor,
+                    }}
+                  >
+                    ₹{formatINR(s.amount)} · {s.label}
+                  </button>
+                ))}
+              </div>
+              {calc.customerAmount != null && calc.isValid && (
+                <p className={control.help}>
+                  At ₹{formatINR(calc.customerAmount)}, ArchaeoTrails receives ≈ ₹{formatINR(calc.expectedNetAmount)} after fees
+                  (₹{formatINR(calc.additionalMargin)} above the ₹{formatINR(baseAmount)} target).
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -184,48 +306,84 @@ function CartEditor({
           type, right above. Still saved as part of the DRAFT (not the
           payment request) under the hood, but one click on Save below
           covers both — see handleSaveCart in AdminExperienceBuilder.jsx. */}
-      {needsBookingEndDate && (
-        <Labelled label={content.bookingEndDateLabel} help="Deadline for Individual bookings.">
+      {offersGroup && (
+        <Labelled label={content.bookingEndDateLabel} help="Deadline for Group bookings.">
           <input type="date" value={bookingEndDate} onChange={(e) => onBookingEndDateChange(e.target.value)} className={control.input} style={{ colorScheme: "dark" }} />
         </Labelled>
       )}
 
-      {needsSlots && (
+      {offersGroup && (
+        <Labelled label={content.experienceDateLabel} help={content.experienceDateHelp}>
+          <input type="date" value={startDate} onChange={(e) => onStartDateChange(e.target.value)} className={control.input} style={{ colorScheme: "dark" }} />
+        </Labelled>
+      )}
+
+      {offersPrivate && (
         <>
+          <Labelled label="Private — minimum people" help="Smallest party a private booking accepts.">
+            <input type="number" min="1" value={privateMinPeople} onChange={(e) => onPrivateMinPeopleChange(e.target.value)} className={control.input} />
+          </Labelled>
           <div className="grid grid-cols-2 gap-1.5">
             <Labelled label={content.startDateLabel}>
-              <input type="date" value={startDate} onChange={(e) => onStartDateChange(e.target.value)} className={control.input} style={{ colorScheme: "dark" }} />
+              <input type="date" value={pStart} onChange={(e) => setPStart(e.target.value)} className={control.input} style={{ colorScheme: "dark" }} />
             </Labelled>
             <Labelled label={content.endDateLabel}>
-              <input type="date" value={endDate} onChange={(e) => onEndDateChange(e.target.value)} className={control.input} style={{ colorScheme: "dark" }} />
+              <input type="date" value={pEnd} onChange={(e) => setPEnd(e.target.value)} className={control.input} style={{ colorScheme: "dark" }} />
             </Labelled>
           </div>
-
-          <div>
-            <label className={control.label}>Bookable dates (Private)</label>
-            {slots.length === 0 && <p className={`${control.help} mb-1`}>No dates yet — generate from Start/End date above, or add one manually.</p>}
-            <div className={adminUi.stack.xs}>
-              {slots.map((s, i) => (
-                <div key={i} className="flex items-center gap-1">
-                  <input type="date" value={s} onChange={(e) => setSlotAt(i, e.target.value)} className={control.inputSm} style={{ colorScheme: "dark" }} />
-                  <RowButton label="Remove slot" danger onClick={() => removeSlotAt(i)}>✕</RowButton>
-                </div>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-1.5 mt-1.5">
-              <AddRowButton onClick={addSlot}>+ Add slot</AddRowButton>
-              {canGenerate && <AddRowButton onClick={generateFromSchedule}>↻ Regenerate from {startDate} – {endDate}</AddRowButton>}
-            </div>
-            {!canGenerate && <p className={control.help}>Set Start/End date above to generate one slot per day.</p>}
-          </div>
+          <p className={control.help}>{content.privateDatesHelp}</p>
+          <SlotList
+            label="Bookable dates (Private)"
+            emptyHint="Required — generate from the Start/End date above, or add one manually."
+            slots={privateSlots}
+            onChange={onPrivateSlotsChange}
+            startDate={pStart}
+            endDate={pEnd}
+          />
         </>
       )}
 
       {error && <p className={text.body} style={{ color: theme.dangerColor }}>{error}</p>}
-      <button type="button" onClick={onSave} disabled={saving} className={control.btnPrimary} style={{ backgroundColor: theme.accentColor, color: theme.pageBackground }}>
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={saving || belowMinimum}
+        title={belowMinimum ? "Raise the price to at least the minimum shown above, or clear the calculator's base amount." : undefined}
+        className={control.btnPrimary}
+        style={{ backgroundColor: theme.accentColor, color: theme.pageBackground }}
+      >
         {saving ? "Saving…" : hasExperienceId ? "Save cart settings" : "Save draft & cart settings"}
       </button>
     </aside>
+  );
+}
+
+/** The editable list of bookable Private dates. Seeded from the Start/End
+ *  dates, then hand-edited. Each date can be booked once. */
+function SlotList({ label, emptyHint, slots, onChange, startDate, endDate }) {
+  const canGenerate = Boolean(startDate && endDate);
+  const setSlotAt = (i, value) => onChange(slots.map((s, idx) => (idx === i ? value : s)));
+  const removeSlotAt = (i) => onChange(slots.filter((_, idx) => idx !== i));
+  const addSlot = () => onChange([...slots, slots[slots.length - 1] || startDate || ""]);
+
+  return (
+    <div>
+      <label className={control.label}>{label}</label>
+      {slots.length === 0 && <p className={`${control.help} mb-1`}>{emptyHint}</p>}
+      <div className={adminUi.stack.xs}>
+        {slots.map((s, i) => (
+          <div key={i} className="flex items-center gap-1">
+            <input type="date" value={s} onChange={(e) => setSlotAt(i, e.target.value)} className={control.inputSm} style={{ colorScheme: "dark" }} />
+            <RowButton label="Remove slot" danger onClick={() => removeSlotAt(i)}>✕</RowButton>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-1.5 mt-1.5">
+        <AddRowButton onClick={addSlot}>+ Add slot</AddRowButton>
+        {canGenerate && <AddRowButton onClick={() => onChange(dailySlotsBetween(startDate, endDate))}>↻ Regenerate from {startDate} – {endDate}</AddRowButton>}
+      </div>
+      {!canGenerate && <p className={control.help}>Set the Start/End date above to generate one slot per day.</p>}
+    </div>
   );
 }
 

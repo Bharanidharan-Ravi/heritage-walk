@@ -10,6 +10,7 @@ import WalkDetail from './Component/Sections/WalkDetail';
 import FormPage from './Component/Sections/FormPage'; // form-generator (dry scaffold, see docs/form-generator/MASTER_PROMPT.md)
 import ExperienceList from './Component/Sections/ExperienceList'; // public selection page for Experience Builder content
 import ExperienceDetail from './Component/Sections/ExperienceDetail'; // public detail + booking hand-off page
+import TestConsole from './Component/pages/TestConsole'; // private QA console — dev-only unless VITE_ENABLE_TEST_PAGE=true
 import NewPrototype from './Component/pages/NewPrototype'; // immersive redesign prototype — throwaway, not linked from nav
 
 // --- Admin panel (Admin/Employee only — "User" role is reserved for a
@@ -36,6 +37,8 @@ function App() {
     <Routes>
       {/* Standalone prototype — outside Layout so it owns its own nav/footer */}
       <Route path="/new" element={<NewPrototype />} />
+      {/* Reached as /test/console (the site itself is served under /test) */}
+      <Route path="/console" element={<TestConsole />} />
       <Route element={<Layout />}>
         {/* All these paths load the SAME page, but the Layout will handle scrolling */}
         <Route path="/" element={<HeritageHome />} />

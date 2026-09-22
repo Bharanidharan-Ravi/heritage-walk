@@ -145,6 +145,9 @@ export default function FormPage() {
           formData: values,
           submitterName,
           submitterEmail,
+          // Private bookings only — the date picked in the cart widget; the
+          // server checks it's still free and takes it off the public list.
+          slot: searchParams.get("slot") || "",
           // Empty on a free form — the server ignores them when
           // requiresPayment is false and never records an amount.
           razorpayOrderId: orderId || "",

@@ -61,10 +61,12 @@ export const experiencePublicConfig = {
     // Config/predefinedFields.config.jsx: "registrationType" /
     // "numberOfAttendees") remains the one place that actually records it.
     registrationTypeLabel: "Registration type",
-    individualLabel: "Individual",
+    groupLabel: "Group",
     privateLabel: "Private",
     ticketsLabel: "Number of people",
+    minPeopleNote: (n) => `Private bookings need at least ${n} ${n === 1 ? "person" : "people"}.`,
     experienceDateLabel: "Experience date",
+    bookingEndsLabel: "Booking closes",
     totalLabel: "Total",
     dateNotSetLabel: "Date to be announced",
 
@@ -97,6 +99,20 @@ export const experiencePublicConfig = {
     previewPriceNote: "Price & capacity are set by an Admin after approval.",
     previewBookLabel: "Book Now",
     previewBookNote: "Booking becomes active once this experience is published.",
+    previewBookOpenNote: "Preview — Book Now opens the registration page.",
+
+    // Registration (form-fill) page — shared by the admin builder's
+    // Registration screen and the preview's Book Now step.
+    payNowLabel: "Pay Now",
+    // Form blocks the booking cart already answers — kept out of the
+    // registration form so visitors aren't asked twice.
+    cartOwnedFieldKeys: ["registrationType"],
+    registrationHeading: "Your details",
+    registrationTitleFallback: "Untitled experience",
+    registrationBackLabel: "← Back to page",
+    registrationEmptyNote: "No fields added yet — build the registration form first.",
+    registrationPreviewNote: "Preview only — nothing is submitted.",
+    registrationSummaryLabel: "Registration",
 
     // Listing page (ExperienceList.jsx)
     listTitle: "Our Experiences",

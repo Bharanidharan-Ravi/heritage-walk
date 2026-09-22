@@ -80,6 +80,13 @@ namespace ArchaeoTrails.Infrastructure.Migrations
                     b.Property<decimal>("Price")
                         .HasColumnType("decimal(10,2)");
 
+                    b.Property<int>("PrivateMinPeople")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PrivateSlotsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime?>("PublishedAt")
                         .HasColumnType("datetime2");
 
@@ -137,6 +144,9 @@ namespace ArchaeoTrails.Infrastructure.Migrations
 
                     b.Property<decimal>("AmountPaid")
                         .HasColumnType("decimal(10,2)");
+
+                    b.Property<DateTime?>("BookedSlot")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -222,6 +232,74 @@ namespace ArchaeoTrails.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("FormTemplates");
+                });
+
+            modelBuilder.Entity("ArchaeoTrails.Domain.Entities.PaymentSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<decimal>("GatewayFeePercent")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal>("GatewayGstPercent")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("PlatformFeePercent")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("PricingMode")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PaymentSettings", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("5d0f2c4e-7a1b-4c39-9e6a-3b8f1d2a4c70"),
+                            CreatedAt = new DateTime(2026, 9, 20, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "INR",
+                            Environment = "Sandbox",
+                            GatewayFeePercent = 1.95m,
+                            GatewayGstPercent = 18.00m,
+                            IsEnabled = true,
+                            PlatformFeePercent = 5.00m,
+                            PricingMode = "CurrentOffer",
+                            Provider = "Cashfree",
+                            UpdatedAt = new DateTime(2026, 9, 20, 0, 0, 0, 0, DateTimeKind.Utc)
+                        });
                 });
 
             modelBuilder.Entity("ArchaeoTrails.Infrastructure.Identity.ApplicationUser", b =>

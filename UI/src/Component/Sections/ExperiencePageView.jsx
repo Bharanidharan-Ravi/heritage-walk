@@ -14,7 +14,7 @@
 // automatically.
 //
 // `previewMode` (set only by the admin preview) keeps the cart widget itself
-// fully interactive — an admin can still play with Individual/Group and the
+// fully interactive — an admin can still play with Group/Private and the
 // ticket stepper — but disarms the "Book Now" hand-off, since a
 // still-being-edited experience has no id/linkedFormSlug/price to send it to
 // yet (those are Admin-only, set after approval — see
@@ -23,13 +23,14 @@
 import React, { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { experiencePublicConfig } from "../Config/experiencePublic.config";
+import { CART_OWNED_BLOCK_KEYS } from "../Config/experienceBuilder.config";
 import FieldIcon from "../Config/fieldIcons";
 import { hasValue, formatSimpleValue } from "./experienceBlockHelpers";
 
-export default function ExperiencePageView({ experience, previewMode = false }) {
+export default function ExperiencePageView({ experience, previewMode = false, onBook }) {
   const { theme, content, sectionLabels, layoutKeys, quickFacts, positiveListKeys, negativeListKeys } = experiencePublicConfig;
 
-  const blocks = experience.contentBlocks || [];
+  const blocks = (experience.contentBlocks || []).filter((b) => !CART_OWNED_BLOCK_KEYS.includes(b.blockKey));
   const byKey = (key) => blocks.find((b) => b.blockKey === key);
   const typeLabel = content.typeLabels[experience.type?.toLowerCase()] || experience.type;
 
@@ -65,22 +66,22 @@ export default function ExperiencePageView({ experience, previewMode = false }) 
   // slim sticky "Live Preview" bar instead — so that much top padding is
   // pure dead space there; use a small one just to clear that bar instead.
   return (
-    <section className={`${previewMode ? "pt-10" : "pt-28"} pb-24 min-h-screen`} style={{ backgroundColor: theme.pageBackground, color: theme.textColor }}>
+    <section className={`${previewMode ? "pt-10" : "pt-24"} pb-12 min-h-screen`} style={{ backgroundColor: theme.pageBackground, color: theme.textColor }}>
       <div className="max-w-7xl mx-auto px-6 lg:px-12">
         <Breadcrumb theme={theme} content={content} typeLabel={typeLabel} title={experience.title} />
 
-        <div className="flex flex-col lg:flex-row gap-12 xl:gap-16 mt-6">
+        <div className="flex flex-col lg:flex-row gap-8 xl:gap-10 mt-4">
           {/* LEFT: content */}
           <div className="lg:w-2/3 min-w-0">
             <p className="uppercase tracking-widest text-xs font-bold mb-3" style={{ color: theme.accentColor }}>
               {typeLabel}
             </p>
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-serif font-medium mb-6 leading-tight">
+            <h1 className="text-3xl md:text-4xl lg:text-5xl font-serif font-medium mb-4 leading-tight">
               {experience.title || "Untitled experience"}
             </h1>
 
             {chips.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-8">
+              <div className="flex flex-wrap gap-2 mb-5">
                 {chips.map((b) => (
                   <span
                     key={b.blockKey}
@@ -101,14 +102,14 @@ export default function ExperiencePageView({ experience, previewMode = false }) 
                 simply moves up to the top, in both preview and the live
                 page. */}
             {hero?.value && (
-              <div className="rounded-2xl overflow-hidden shadow-xl mb-10">
-                <img src={hero.value} alt={experience.title} className="w-full h-95 md:h-120 object-cover" />
+              <div className="rounded-2xl overflow-hidden shadow-xl mb-5">
+                <img src={hero.value} alt={experience.title} className="w-full h-60 md:h-80 object-cover" />
               </div>
             )}
 
             {(hasValue(summary) || hasValue(fullDescription)) && (
               <div
-                className="mb-12 rounded-3xl border p-7 md:p-10 shadow-lg shadow-black/5 backdrop-blur-xl"
+                className="mb-4 rounded-2xl border p-6 md:p-8 shadow-lg shadow-black/5 backdrop-blur-xl"
                 style={{ borderColor: theme.glassBorder, backgroundColor: theme.glassBackground }}
               >
                 <SectionTitle theme={theme}>{content.overviewCardTitle}</SectionTitle>
@@ -116,7 +117,7 @@ export default function ExperiencePageView({ experience, previewMode = false }) 
                   // Admin-authored rich HTML (RichTextEditor, never visitor
                   // input) — see Admin/ExperienceBuilder/RichTextEditor.jsx.
                   <div
-                    className="text-xl md:text-2xl font-serif mb-6 pl-5 border-l-4 whitespace-pre-wrap **:max-w-full"
+                    className="text-lg md:text-xl font-serif mb-4 pl-5 border-l-4 whitespace-pre-wrap **:max-w-full"
                     style={{
                       borderColor: theme.accentColor,
                       color: theme.textColor,
@@ -146,7 +147,7 @@ export default function ExperiencePageView({ experience, previewMode = false }) 
 
             {quickFactBlocks.length > 0 && (
               <div
-                className="mb-8 rounded-3xl border p-7 md:p-10 shadow-lg shadow-black/5 backdrop-blur-xl"
+                className="mb-4 rounded-2xl border p-5 md:p-6 shadow-lg shadow-black/5 backdrop-blur-xl"
                 style={{ borderColor: theme.glassBorder, backgroundColor: theme.glassBackground }}
               >
                 <QuickFactsGrid facts={quickFactBlocks} theme={theme} title={quickFacts.title} />
@@ -159,13 +160,13 @@ export default function ExperiencePageView({ experience, previewMode = false }) 
                 the true bottom of the page. */}
             {hasValue(gallery) && (
               <div
-                className="mb-8 rounded-3xl border p-7 md:p-10 shadow-lg shadow-black/5 backdrop-blur-xl"
+                className="mb-4 rounded-2xl border p-5 md:p-6 shadow-lg shadow-black/5 backdrop-blur-xl"
                 style={{ borderColor: theme.glassBorder, backgroundColor: theme.glassBackground }}
               >
                 <SectionTitle theme={theme}>{content.galleryCardTitle}</SectionTitle>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {gallery.items.map((src, i) => (
-                    <img key={i} src={src} alt={`${experience.title} ${i + 1}`} className="w-full h-40 object-cover rounded-xl" />
+                    <img key={i} src={src} alt={`${experience.title} ${i + 1}`} className="w-full h-32 object-cover rounded-xl" />
                   ))}
                 </div>
               </div>
@@ -173,7 +174,7 @@ export default function ExperiencePageView({ experience, previewMode = false }) 
 
             {(hasValue(location) || hasValue(meetingPoint)) && (
               <div
-                className="mb-8 rounded-3xl border p-7 md:p-10 shadow-lg shadow-black/5 backdrop-blur-xl"
+                className="mb-4 rounded-2xl border p-5 md:p-6 shadow-lg shadow-black/5 backdrop-blur-xl"
                 style={{ borderColor: theme.glassBorder, backgroundColor: theme.glassBackground }}
               >
                 <SectionTitle theme={theme}>{content.mapCardTitle}</SectionTitle>
@@ -198,11 +199,11 @@ export default function ExperiencePageView({ experience, previewMode = false }) 
               </div>
             )}
 
-            <div className="space-y-8">
+            <div className="space-y-4">
               {streamBlocks.map((block) => (
                 <div
                   key={block.blockKey}
-                  className="rounded-3xl border p-7 md:p-10 shadow-lg shadow-black/5 backdrop-blur-xl"
+                  className="rounded-2xl border p-5 md:p-6 shadow-lg shadow-black/5 backdrop-blur-xl"
                   style={{ borderColor: theme.glassBorder, backgroundColor: theme.glassBackground }}
                 >
                   <BlockSection
@@ -219,7 +220,7 @@ export default function ExperiencePageView({ experience, previewMode = false }) 
 
           {/* RIGHT: sticky booking / cart card */}
           <div className="lg:w-1/3">
-            <BookingCard experience={experience} theme={theme} content={content} previewMode={previewMode} />
+            <BookingCard experience={experience} theme={theme} content={content} previewMode={previewMode} onBook={onBook} />
           </div>
         </div>
       </div>
@@ -259,26 +260,34 @@ function LocationPoint({ theme, label, value, getDirectionsLabel }) {
   );
 }
 
-function BookingCard({ experience, theme, content, previewMode }) {
+// Exported so the admin registration screens can show the very same card.
+// `actionLabel`/`actionNote` override the preview-mode button text.
+export function BookingCard({ experience, theme, content, previewMode, onBook, actionLabel, actionNote }) {
   const spots = experience.capacityRemaining;
   const unlimited = experience.capacityTotal == null;
   const soldOut = !unlimited && spots <= 0;
   const maxQty = unlimited ? 50 : Math.max(1, spots);
 
-  // Which toggle(s) an Admin allowed — set from the Experience Builder's cart
-  // widget (Cart & payment editor). Falls back to "Individual", same default
-  // the backend enum itself uses, for anything saved before this field existed.
-  const registrationType = experience.registrationType || "Individual";
-  const allowIndividual = registrationType !== "Private";
-  const allowPrivate = registrationType !== "Individual";
+  // Which option(s) an Admin allowed — set from the Experience Builder's cart
+  // widget. "Individual" is the pre-rename spelling of Group, so anything saved
+  // before then still reads correctly.
+  const registrationType = experience.registrationType === "Individual"
+    ? "Group"
+    : experience.registrationType || "Group";
+  const allowGroup = registrationType !== "Private";
+  const allowPrivate = registrationType !== "Group";
+  const privateMin = Math.max(1, experience.privateMinPeople || 1);
 
-  const [regType, setRegType] = useState(allowIndividual ? "Individual" : "Private");
-  const [qty, setQty] = useState(1);
+  const [regType, setRegType] = useState(allowGroup ? "Group" : "Private");
+  const [qty, setQty] = useState(allowGroup ? 1 : privateMin);
+  // Private has a minimum party size; Group can be any headcount from 1.
+  const minQty = regType === "Private" ? privateMin : 1;
 
-  // Private is a private booking against one of the Admin's configured slot
-  // dates (experience.slots) — it isn't bookable until the visitor actually
-  // picks one, so it gets its own selection state below.
-  const slots = experience.slots || [];
+  // Each option has its own list of dates. A Private booking always needs one
+  // picked; a Group booking only does when the Admin configured Group dates
+  // (otherwise the booking deadline alone gates it, as before).
+  // Only a Private booking picks a date; Group has none.
+  const slots = regType === "Private" ? (experience.privateSlots || []) : [];
   const [selectedSlot, setSelectedSlot] = useState("");
   // Scroll handle for the slot slider's forward/backward arrow buttons.
   const slotTrackRef = useRef(null);
@@ -288,22 +297,19 @@ function BookingCard({ experience, theme, content, previewMode }) {
     el.scrollBy({ left: dir * (el.clientWidth * 0.8), behavior: "smooth" });
   };
 
-  // Picking "Individual" pins the count to 1, matching what "Individual"
-  // means on the Form Generator side (numberOfAttendees === 1), and drops any
-  // slot choice since Individual doesn't use one; "Private" frees the ticket
-  // stepper back up and always starts unselected — switching into Private
-  // requires picking a slot fresh every time, never a carried-over guess.
-  const selectIndividual = () => { setRegType("Individual"); setQty(1); setSelectedSlot(""); };
-  const selectPrivate = () => setRegType("Private");
+  // Switching option resets the headcount to that option's minimum and drops
+  // any slot choice — a date picked for one option isn't valid for the other.
+  const selectGroup = () => { setRegType("Group"); setQty(1); setSelectedSlot(""); };
+  const selectPrivate = () => { setRegType("Private"); setQty(Math.min(privateMin, maxQty)); setSelectedSlot(""); };
 
-  const clampQty = (n) => Math.min(maxQty, Math.max(1, n));
+  const clampQty = (n) => Math.max(minQty, Math.min(maxQty, n));
 
   const total = useMemo(() => {
     if (!experience.requiresPayment) return null;
     return experience.price * qty;
   }, [experience.requiresPayment, experience.price, qty]);
 
-  // Book Now stays locked for Private until a slot is chosen.
+  // Book Now stays locked until a date is chosen whenever the option needs one.
   const needsSlot = regType === "Private";
   const slotReady = !needsSlot || Boolean(selectedSlot);
 
@@ -332,14 +338,14 @@ function BookingCard({ experience, theme, content, previewMode }) {
       <div className="space-y-5 pb-6 border-b" style={{ borderColor: theme.glassBorder }}>
         <div>
           <span className="text-[10px] uppercase tracking-widest block mb-2 font-bold" style={{ color: theme.mutedColor }}>{content.registrationTypeLabel}</span>
-          <div className={`grid gap-2 ${allowIndividual && allowPrivate ? "grid-cols-2" : "grid-cols-1"}`}>
-            {allowIndividual && <SegmentButton active={regType === "Individual"} onClick={selectIndividual} theme={theme}>{content.individualLabel}</SegmentButton>}
+          <div className={`grid gap-2 ${allowGroup && allowPrivate ? "grid-cols-2" : "grid-cols-1"}`}>
+            {allowGroup && <SegmentButton active={regType === "Group"} onClick={selectGroup} theme={theme}>{content.groupLabel}</SegmentButton>}
             {allowPrivate && <SegmentButton active={regType === "Private"} onClick={selectPrivate} theme={theme}>{content.privateLabel}</SegmentButton>}
           </div>
         </div>
 
         {/* Private has no fixed date of its own — the visitor must pick one
-            of the Admin's configured slots before Book Now unlocks below. */}
+            of the Admin's configured dates before Book Now unlocks below. */}
         {needsSlot && (
           <div>
             <span className="text-[10px] uppercase tracking-widest block mb-2 font-bold" style={{ color: theme.mutedColor }}>{content.chooseSlotLabel}</span>
@@ -375,7 +381,7 @@ function BookingCard({ experience, theme, content, previewMode }) {
             style={{ borderColor: theme.glassBorder, backgroundColor: theme.glassInsetBackground }}
           >
             <StepperButton
-              disabled={regType === "Individual" || qty <= 1}
+              disabled={qty <= minQty}
               onClick={() => setQty((q) => clampQty(q - 1))}
               theme={theme}
             >
@@ -383,13 +389,16 @@ function BookingCard({ experience, theme, content, previewMode }) {
             </StepperButton>
             <span className="w-6 text-center font-bold">{qty}</span>
             <StepperButton
-              disabled={regType === "Individual" || qty >= maxQty}
+              disabled={qty >= maxQty}
               onClick={() => setQty((q) => clampQty(q + 1))}
               theme={theme}
             >
               +
             </StepperButton>
           </div>
+          {regType === "Private" && (
+            <p className="text-xs mt-2" style={{ color: theme.mutedColor }}>{content.minPeopleNote(privateMin)}</p>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-x-8 gap-y-3">
@@ -398,6 +407,14 @@ function BookingCard({ experience, theme, content, previewMode }) {
               <span className="text-[10px] uppercase tracking-widest block mb-1 font-bold" style={{ color: theme.mutedColor }}>{content.experienceDateLabel}</span>
               <span className="font-medium">
                 {experience.startDate ? new Date(experience.startDate).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : content.dateNotSetLabel}
+              </span>
+            </div>
+          )}
+          {experience.bookingEndDate && (
+            <div>
+              <span className="text-[10px] uppercase tracking-widest block mb-1 font-bold" style={{ color: theme.mutedColor }}>{content.bookingEndsLabel}</span>
+              <span className="font-medium">
+                {new Date(experience.bookingEndDate).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
               </span>
             </div>
           )}
@@ -420,15 +437,22 @@ function BookingCard({ experience, theme, content, previewMode }) {
       <div className="pt-6">
         {previewMode ? (
           <>
+            {/* With an onBook hand-off (admin preview) the button opens the
+                registration page; without one it stays inert as before. */}
             <button
               type="button"
-              disabled
-              className="w-full py-4 rounded-xl font-bold uppercase tracking-widest text-sm cursor-not-allowed opacity-50"
+              disabled={!onBook}
+              onClick={onBook}
+              className={`w-full py-4 rounded-xl font-bold uppercase tracking-widest text-sm transition-all ${
+                onBook ? "hover:-translate-y-1 shadow-lg" : "cursor-not-allowed opacity-50"
+              }`}
               style={{ backgroundColor: theme.accentColor, color: theme.pageBackground }}
             >
-              {content.previewBookLabel}
+              {actionLabel || content.previewBookLabel}
             </button>
-            <p className="text-xs mt-3 text-center" style={{ color: theme.mutedColor }}>{content.previewBookNote}</p>
+            <p className="text-xs mt-3 text-center" style={{ color: theme.mutedColor }}>
+              {actionNote || (onBook ? content.previewBookOpenNote : content.previewBookNote)}
+            </p>
           </>
         ) : soldOut ? (
           <DisabledBookButton theme={theme}>{content.soldOutLabel}</DisabledBookButton>
@@ -544,9 +568,9 @@ export function BlockSection({ block, theme, sectionLabels, positiveListKeys, ne
 
 export function SectionTitle({ theme, children }) {
   return (
-    <div className="flex items-center gap-3 mb-5">
+    <div className="flex items-center gap-3 mb-3">
       <span className="w-8 h-0.5 rounded-full shrink-0" style={{ backgroundColor: theme.accentColor }} />
-      <h2 className="text-xl md:text-2xl font-serif" style={{ color: theme.textColor }}>{children}</h2>
+      <h2 className="text-lg md:text-xl font-serif" style={{ color: theme.textColor }}>{children}</h2>
     </div>
   );
 }
@@ -557,7 +581,7 @@ export function BlockValue({ block, theme, positiveListKeys = [], negativeListKe
       return (
         <div className="divide-y" style={{ borderColor: theme.borderColor }}>
           {block.items.map((it, i) => (
-            <details key={i} className="py-4 group">
+            <details key={i} className="py-3 group">
               <summary className="font-semibold cursor-pointer list-none flex items-center justify-between gap-4">
                 {it.question}
                 <span className="transition-transform group-open:rotate-45 text-xl leading-none" style={{ color: theme.accentColor }}>+</span>
@@ -570,7 +594,7 @@ export function BlockValue({ block, theme, positiveListKeys = [], negativeListKe
     case "modules":
       // "Full itinerary / roadmap" — an ordered plan, styled as a timeline.
       return (
-        <ol className="relative border-l-2 pl-6 space-y-6" style={{ borderColor: theme.borderColor }}>
+        <ol className="relative border-l-2 pl-6 space-y-4" style={{ borderColor: theme.borderColor }}>
           {block.items.map((it, i) => (
             <li key={i} className="relative">
               <span
@@ -587,11 +611,13 @@ export function BlockValue({ block, theme, positiveListKeys = [], negativeListKe
           ))}
         </ol>
       );
-    case "repeatableList":
+    case "repeatableList": {
+      // Blank rows (an "Add an item…" the admin hasn't filled in yet) aren't shown.
+      const items = (block.items || []).filter((it) => String(it ?? "").trim() !== "");
       if (positiveListKeys.includes(block.blockKey)) {
         return (
-          <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-2">
-            {block.items.map((it, i) => (
+          <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
+            {items.map((it, i) => (
               <li key={i} className="flex items-start gap-2.5">
                 <CheckIcon color={theme.accentColor} />
                 <span>{it}</span>
@@ -602,8 +628,8 @@ export function BlockValue({ block, theme, positiveListKeys = [], negativeListKe
       }
       if (negativeListKeys.includes(block.blockKey)) {
         return (
-          <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-2">
-            {block.items.map((it, i) => (
+          <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
+            {items.map((it, i) => (
               <li key={i} className="flex items-start gap-2.5">
                 <CrossIcon color={theme.dangerColor} />
                 <span>{it}</span>
@@ -614,9 +640,10 @@ export function BlockValue({ block, theme, positiveListKeys = [], negativeListKe
       }
       return (
         <ul className="list-disc list-inside space-y-1">
-          {block.items.map((it, i) => <li key={i}>{it}</li>)}
+          {items.map((it, i) => <li key={i}>{it}</li>)}
         </ul>
       );
+    }
     case "gallery":
       return (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -675,7 +702,7 @@ function QuickFactTile({ block, icon, theme }) {
 
   return (
     <div
-      className="flex flex-col items-center text-center gap-2 rounded-2xl border px-3 py-4 backdrop-blur-sm"
+      className="flex flex-col items-center text-center gap-2 rounded-2xl border px-3 py-3 backdrop-blur-sm"
       style={{ borderColor: theme.glassBorder, backgroundColor: theme.glassInsetBackground, opacity: isToggle && !isOn ? 0.5 : 1 }}
     >
       <span

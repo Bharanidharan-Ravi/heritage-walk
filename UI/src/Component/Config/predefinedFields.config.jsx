@@ -228,7 +228,7 @@ export const predefinedBlocks = [
       placeholder: "-Select-",
       required: true,
       width: 6,
-      options: ["Individual", "Private"],
+      options: ["Group", "Private"],
     },
   },
   {

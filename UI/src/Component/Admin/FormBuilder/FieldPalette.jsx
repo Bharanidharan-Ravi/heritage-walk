@@ -15,7 +15,9 @@ import { formBuilderConfig, paletteSections } from "../../Config/formBuilder.con
 import { adminUi } from "../../Config/adminUi.config";
 import FieldIcon from "../../Config/fieldIcons";
 
-export default function FieldPalette({ onAdd, onDragStartNew, onDragEnd }) {
+// `hiddenKeys`: block keys to leave out of the palette (e.g. the experience
+// registration form drops "registrationType", which the booking cart owns).
+export default function FieldPalette({ onAdd, onDragStartNew, onDragEnd, hiddenKeys = [] }) {
   const { theme, content } = formBuilderConfig;
   const { text } = adminUi;
 
@@ -26,14 +28,22 @@ export default function FieldPalette({ onAdd, onDragStartNew, onDragEnd }) {
 
   const searching = query.trim().length > 0;
 
+  const visibleSections = useMemo(
+    () => paletteSections
+      .map((section) => ({ ...section, blocks: section.blocks.filter((b) => !hiddenKeys.includes(b.key)) }))
+      .filter((section) => section.blocks.length > 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hiddenKeys.join(",")]
+  );
+
   // While searching, sections that match nothing disappear entirely and the
   // rest are force-expanded — otherwise a hit could be hidden behind a
   // collapsed header.
   const sections = useMemo(() => {
-    if (!searching) return paletteSections;
+    if (!searching) return visibleSections;
     const q = query.trim().toLowerCase();
 
-    return paletteSections
+    return visibleSections
       .map((section) => ({
         ...section,
         blocks: section.blocks.filter((b) =>
@@ -43,7 +53,7 @@ export default function FieldPalette({ onAdd, onDragStartNew, onDragEnd }) {
         ),
       }))
       .filter((section) => section.blocks.length > 0);
-  }, [query, searching]);
+  }, [query, searching, visibleSections]);
 
   const toggle = (group) => setCollapsed((c) => ({ ...c, [group]: !c[group] }));
 

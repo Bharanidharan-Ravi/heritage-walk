@@ -31,6 +31,13 @@ namespace ArchaeoTrails.Domain.Entities
 
         public SubmissionStatus Status { get; set; } = SubmissionStatus.PendingPayment;
 
+        /// <summary>
+        /// The Private date this submission booked (date only, UTC midnight);
+        /// null for Group bookings. A booked date is taken off the experience's
+        /// public list of available Private dates.
+        /// </summary>
+        public DateTime? BookedSlot { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 }

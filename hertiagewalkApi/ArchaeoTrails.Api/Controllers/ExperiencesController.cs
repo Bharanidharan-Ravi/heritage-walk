@@ -38,14 +38,17 @@ namespace ArchaeoTrails.Api.Controllers
         private readonly IAuthService _authService;
         private readonly ISanityContentService _sanity;
         private readonly IExperienceEventPublisher _events;
+        private readonly IFormSubmissionRepository _formSubmissions;
 
         public ExperiencesController(
             IExperienceTemplateRepository experiences,
             IFormTemplateRepository formTemplates,
             IAuthService authService,
             ISanityContentService sanity,
-            IExperienceEventPublisher events)
+            IExperienceEventPublisher events,
+            IFormSubmissionRepository formSubmissions)
         {
+            _formSubmissions = formSubmissions;
             _experiences = experiences;
             _formTemplates = formTemplates;
             _authService = authService;
@@ -190,9 +193,20 @@ namespace ArchaeoTrails.Api.Controllers
                 linkedFormSlug = form?.Slug;
             }
 
+            // Private dates already taken by a completed booking are dropped
+            // from the public list — a date can be booked once.
+            var privateSlots = JsonSerializer.Deserialize<List<DateTime>>(experience.PrivateSlotsJson) ?? new();
+            if (experience.LinkedFormTemplateId.HasValue && privateSlots.Count > 0)
+            {
+                var booked = await _formSubmissions.GetBookedSlotsAsync(experience.LinkedFormTemplateId.Value);
+                privateSlots = AvailablePrivateSlots(experience.PrivateSlotsJson, booked);
+            }
+
             var bookingEnabled = linkedFormSlug is not null &&
                 (experience.BookingEndDate is null || experience.BookingEndDate > DateTime.UtcNow) &&
-                (experience.CapacityRemaining is null || experience.CapacityRemaining > 0);
+                (experience.CapacityRemaining is null || experience.CapacityRemaining > 0) &&
+                // A Private-only experience with every date taken is closed.
+                !(experience.RegistrationType == RegistrationType.Private && privateSlots.Count == 0);
 
             return Ok(new PublicExperienceDetailDto
             {
@@ -206,7 +220,9 @@ namespace ArchaeoTrails.Api.Controllers
                 CapacityTotal = experience.CapacityTotal,
                 CapacityRemaining = experience.CapacityRemaining,
                 RegistrationType = experience.RegistrationType.ToString(),
-                Slots = JsonSerializer.Deserialize<List<DateTime>>(experience.SlotsJson) ?? new(),
+                Slots = new(),
+                PrivateSlots = privateSlots,
+                PrivateMinPeople = experience.PrivateMinPeople,
                 BookingEnabled = bookingEnabled,
                 LinkedFormSlug = linkedFormSlug,
                 StartDate = experience.StartDate,
@@ -299,13 +315,23 @@ namespace ArchaeoTrails.Api.Controllers
             {
                 return BadRequest(new { status = "error", message = "That registration form doesn't exist." });
             }
-            if (!Enum.TryParse<RegistrationType>(request.RegistrationType, true, out var registrationType))
+            // "Individual" is the pre-rename spelling of Group; still accepted so an
+            // older client or saved payload doesn't start failing.
+            var requestedType = string.Equals(request.RegistrationType, "Individual", StringComparison.OrdinalIgnoreCase)
+                ? nameof(RegistrationType.Group)
+                : request.RegistrationType;
+            if (!Enum.TryParse<RegistrationType>(requestedType, true, out var registrationType))
             {
-                return BadRequest(new { status = "error", message = "Invalid registration type. Use Individual, Private or Both." });
+                return BadRequest(new { status = "error", message = "Invalid registration type. Use Group, Private or Both." });
             }
-            if (registrationType != RegistrationType.Individual && request.Slots.Count == 0)
+            var offersPrivate = registrationType != RegistrationType.Group;
+            if (offersPrivate && request.PrivateSlots.Count == 0)
             {
                 return BadRequest(new { status = "error", message = "Add at least one bookable date for Private registration." });
+            }
+            if (offersPrivate && request.PrivateMinPeople < 1)
+            {
+                return BadRequest(new { status = "error", message = "Private minimum people must be at least 1." });
             }
 
             experience.RequiresPayment = request.RequiresPayment;
@@ -316,15 +342,18 @@ namespace ArchaeoTrails.Api.Controllers
             experience.CapacityRemaining = request.CapacityTotal;
             experience.LinkedFormTemplateId = request.LinkedFormTemplateId;
             experience.RegistrationType = registrationType;
-            // Individual-only ignores slots entirely (BookingEndDate alone gates
-            // it) — clearing them here instead of trusting the caller to send an
-            // empty list keeps a stale Private slot list from lingering unseen.
-            // Duplicate dates are kept as-is (not deduped): an Admin can add
-            // more than one slot for the same day — e.g. a morning and an
+            // A list for an option that isn't offered is cleared here rather than
+            // trusting the caller to send it empty, so a stale list can't linger
+            // unseen. Duplicate dates are kept as-is (not deduped): an Admin can
+            // add more than one slot for the same day — e.g. a morning and an
             // evening batch — even though a slot carries no other field yet.
-            experience.SlotsJson = registrationType == RegistrationType.Individual
-                ? "[]"
-                : JsonSerializer.Serialize(request.Slots.OrderBy(d => d));
+            // Group bookings have no dates any more (only Private picks a date),
+            // so SlotsJson is always cleared; request.Slots is accepted but ignored.
+            experience.SlotsJson = "[]";
+            experience.PrivateSlotsJson = offersPrivate
+                ? JsonSerializer.Serialize(request.PrivateSlots.OrderBy(d => d))
+                : "[]";
+            experience.PrivateMinPeople = offersPrivate ? request.PrivateMinPeople : 1;
 
             await _experiences.UpdateAsync(experience);
             await _events.ExperienceUpdatedAsync(experience.Id);
@@ -544,6 +573,22 @@ namespace ArchaeoTrails.Api.Controllers
             await _experiences.UpdateAsync(experience);
         }
 
+        /// <summary>
+        /// The Private dates still free: each booked date removes ONE matching
+        /// entry from the configured list (a date may be listed twice, e.g. a
+        /// morning and an evening batch, and each is bookable once).
+        /// </summary>
+        internal static List<DateTime> AvailablePrivateSlots(string privateSlotsJson, IEnumerable<DateTime> booked)
+        {
+            var all = (JsonSerializer.Deserialize<List<DateTime>>(privateSlotsJson) ?? new()).OrderBy(d => d).ToList();
+            foreach (var taken in booked)
+            {
+                var i = all.FindIndex(d => d.Date == taken.Date);
+                if (i >= 0) all.RemoveAt(i);
+            }
+            return all;
+        }
+
         private Guid GetUserId()
         {
             var claim = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
@@ -587,6 +632,8 @@ namespace ArchaeoTrails.Api.Controllers
                 BookingEnabled = bookingEnabled,
                 RegistrationType = e.RegistrationType.ToString(),
                 Slots = JsonSerializer.Deserialize<List<DateTime>>(e.SlotsJson) ?? new(),
+                PrivateSlots = JsonSerializer.Deserialize<List<DateTime>>(e.PrivateSlotsJson) ?? new(),
+                PrivateMinPeople = e.PrivateMinPeople,
                 StartDate = e.StartDate,
                 EndDate = e.EndDate,
                 BookingEndDate = e.BookingEndDate,
@@ -619,6 +666,8 @@ namespace ArchaeoTrails.Api.Controllers
                 LinkedFormTemplateId = e.LinkedFormTemplateId,
                 RegistrationType = e.RegistrationType.ToString(),
                 Slots = JsonSerializer.Deserialize<List<DateTime>>(e.SlotsJson) ?? new(),
+                PrivateSlots = JsonSerializer.Deserialize<List<DateTime>>(e.PrivateSlotsJson) ?? new(),
+                PrivateMinPeople = e.PrivateMinPeople,
                 StartDate = e.StartDate,
                 EndDate = e.EndDate,
                 BookingEndDate = e.BookingEndDate,

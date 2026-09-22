@@ -164,6 +164,9 @@ namespace ArchaeoTrails.Application.Features.Forms
         public string SubmitterName { get; set; } = string.Empty;
         public string SubmitterEmail { get; set; } = string.Empty;
 
+        /// <summary>Private bookings only: the chosen date (ISO). Empty for a Group booking.</summary>
+        public string? Slot { get; set; }
+
         // Returned by Razorpay Checkout after a successful payment.
         // All three stay empty for a form with RequiresPayment == false.
         public string RazorpayOrderId { get; set; } = string.Empty;

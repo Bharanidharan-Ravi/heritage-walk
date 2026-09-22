@@ -23,7 +23,7 @@ import { experienceBuilderConfig, EXPERIENCE_TYPES } from "../../Config/experien
 import { adminUi } from "../../Config/adminUi.config";
 import { useExperienceBuilder } from "../../Admin/ExperienceBuilder/useExperienceBuilder";
 import ExperienceBlockPalette from "../../Admin/ExperienceBuilder/ExperienceBlockPalette";
-import ExperienceCanvas from "../../Admin/ExperienceBuilder/ExperienceCanvas";
+import ExperienceCanvas, { CartSlot, CART_BLOCK_ID } from "../../Admin/ExperienceBuilder/ExperienceCanvas";
 import ExperienceBlockSettings from "../../Admin/ExperienceBuilder/ExperienceBlockSettings";
 import ExperiencePreviewModal from "../../Admin/ExperienceBuilder/ExperiencePreviewModal";
 import { useFormBuilder } from "../../Admin/FormBuilder/useFormBuilder";
@@ -31,6 +31,7 @@ import FieldPalette from "../../Admin/FormBuilder/FieldPalette";
 import BuilderCanvas from "../../Admin/FormBuilder/BuilderCanvas";
 import FieldSettings from "../../Admin/FormBuilder/FieldSettings";
 import { formBuilderConfig } from "../../Config/formBuilder.config";
+import { experiencePublicConfig } from "../../Config/experiencePublic.config";
 import { qk } from "../../../queryKeys";
 
 export default function AdminExperienceBuilder() {
@@ -47,6 +48,7 @@ export default function AdminExperienceBuilder() {
 
   const builder = useExperienceBuilder(experienceType);
   const { theme, content } = experienceBuilderConfig;
+  const { theme: pageTheme, content: pageContent } = experiencePublicConfig;
 
   // The registration form (Name/Email/Phone/Food/"How did you hear"/Address/…)
   // is built right here with the SAME embedded palette+canvas+settings the
@@ -55,6 +57,10 @@ export default function AdminExperienceBuilder() {
   // or updates the linked FormTemplate behind the scenes on save.
   const regForm = useFormBuilder();
   const [regFormDrag, setRegFormDrag] = useState(null);
+  // Registration screen: is the booking-widget card (not a form field) the
+  // thing being edited in the right-hand settings panel?
+  const [regCartSelected, setRegCartSelected] = useState(false);
+  const [step, setStep] = useState("page"); // "page" | "register" — two full-height screens, same 3-column layout
 
   const [drag, setDrag] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -72,8 +78,9 @@ export default function AdminExperienceBuilder() {
   const [price, setPrice] = useState("");
   const [currency, setCurrency] = useState("INR");
   const [capacityTotal, setCapacityTotal] = useState("");
-  const [registrationType, setRegistrationType] = useState("Individual");
-  const [slots, setSlots] = useState([]);
+  const [registrationType, setRegistrationType] = useState("Group");
+  const [privateSlots, setPrivateSlots] = useState([]);
+  const [privateMinPeople, setPrivateMinPeople] = useState("1");
   const [cartSaving, setCartSaving] = useState(false);
   const [cartError, setCartError] = useState("");
 
@@ -102,8 +109,10 @@ export default function AdminExperienceBuilder() {
     setPrice(detail.requiresPayment ? String(detail.price) : "");
     setCurrency(detail.currency || "INR");
     setCapacityTotal(detail.capacityTotal ?? "");
-    setRegistrationType(detail.registrationType || "Individual");
-    setSlots((detail.slots || []).map((d) => d.slice(0, 10)));
+    // "Individual" is the pre-rename spelling of Group.
+    setRegistrationType(!detail.registrationType || detail.registrationType === "Individual" ? "Group" : detail.registrationType);
+    setPrivateSlots((detail.privateSlots || []).map((d) => d.slice(0, 10)));
+    setPrivateMinPeople(String(detail.privateMinPeople || 1));
     setHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail]);
@@ -114,7 +123,12 @@ export default function AdminExperienceBuilder() {
     if (!detail?.linkedFormTemplateId || !token) return;
     let cancelled = false;
     adminApi.getFormById(token, detail.linkedFormTemplateId).then((form) => {
-      if (!cancelled) regForm.loadExisting(form);
+      if (!cancelled) {
+        regForm.loadExisting({
+          ...form,
+          fields: (form.fields || []).filter((f) => !pageContent.cartOwnedFieldKeys.includes(f.name)),
+        });
+      }
     });
     return () => {
       cancelled = true;
@@ -253,7 +267,9 @@ export default function AdminExperienceBuilder() {
         capacityTotal: capacityTotal === "" ? null : Number(capacityTotal),
         linkedFormTemplateId: formId,
         registrationType,
-        slots: registrationType === "Individual" ? [] : slots,
+        slots: [],
+        privateSlots: registrationType === "Group" ? [] : privateSlots,
+        privateMinPeople: Math.max(1, Number(privateMinPeople) || 1),
       });
       invalidateAfterSave(id);
     } catch (err) {
@@ -278,7 +294,7 @@ export default function AdminExperienceBuilder() {
     // the header below stays pinned, and only the palette/canvas/settings
     // grid (the "experience builder area" — title and schedule dates included,
     // as slots inside the canvas) scrolls internally.
-    <div className="flex flex-col overflow-y-auto" style={{ height: "calc(100vh - 2rem)" }}>
+    <div className="flex flex-col" style={{ height: "calc(100vh - 2rem)" }}>
       <div className="shrink-0">
         <header className="flex flex-wrap items-start justify-between gap-2 mb-3">
           <div>
@@ -310,6 +326,25 @@ export default function AdminExperienceBuilder() {
           </ul>
         )}
         {saveError && <p className={`mb-3 ${adminUi.text.body}`} style={{ color: theme.dangerColor }}>{saveError}</p>}
+
+        {isAdmin && (
+          <div className="flex gap-1.5 mb-3">
+            {[["page", "1 · Page"], ["register", "2 · Registration form"]].map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setStep(key)}
+                className={adminUi.control.btnGhost}
+                style={{
+                  borderColor: step === key ? theme.accentColor : theme.borderColor,
+                  color: step === key ? theme.accentColor : theme.mutedColor,
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Palette, canvas, and settings each get their OWN scrollbar on
@@ -317,7 +352,7 @@ export default function AdminExperienceBuilder() {
           scroll dragging all three columns together — a long block list and
           a long canvas no longer fight over the same scroll position. Mobile
           keeps the simple single-column stacked scroll it already had. */}
-      <div className="shrink-0 overflow-y-auto lg:overflow-hidden pb-1 lg:h-[calc(100vh-9rem)] lg:min-h-112">
+      <div className={`${step === "page" ? "" : "hidden"} flex-1 min-h-0 overflow-y-auto lg:overflow-hidden pb-1`}>
         <div className="flex flex-col lg:flex-row gap-3 lg:h-full items-start lg:items-stretch">
           <div className="w-full lg:w-44 lg:shrink-0 lg:h-full lg:min-h-0 lg:overflow-y-auto">
             <ExperienceBlockPalette
@@ -357,7 +392,8 @@ export default function AdminExperienceBuilder() {
             currency={currency}
             capacityTotal={capacityTotal}
             registrationType={registrationType}
-            slots={slots}
+            privateSlots={privateSlots}
+            privateMinPeople={privateMinPeople}
           />
           </div>
 
@@ -378,6 +414,7 @@ export default function AdminExperienceBuilder() {
             onBookingEndDateChange={builder.setBookingEndDate}
             isAdmin={isAdmin}
             hasExperienceId={Boolean(experienceId)}
+            token={token}
             requiresPayment={requiresPayment}
             onRequiresPaymentChange={setRequiresPayment}
             price={price}
@@ -388,8 +425,10 @@ export default function AdminExperienceBuilder() {
             onCapacityTotalChange={setCapacityTotal}
             registrationType={registrationType}
             onRegistrationTypeChange={setRegistrationType}
-            slots={slots}
-            onSlotsChange={setSlots}
+            privateSlots={privateSlots}
+            onPrivateSlotsChange={setPrivateSlots}
+            privateMinPeople={privateMinPeople}
+            onPrivateMinPeopleChange={setPrivateMinPeople}
             onSaveCart={handleSaveCart}
             cartSaving={cartSaving}
             cartError={cartError}
@@ -406,10 +445,9 @@ export default function AdminExperienceBuilder() {
           fixed-height builder area above (which owns its own internal
           scroll), so it scrolls into view with the rest of the page. */}
       {isAdmin && (
-        <div className="mt-5 shrink-0">
-          <h2 className={adminUi.text.header} style={{ fontSize: "1.05rem" }}>Registration form</h2>
-          <p className={`${adminUi.text.body} mb-3`} style={{ color: theme.mutedColor }}>
-            Drag in the fields visitors fill out to register — Name, Email, Phone, Food preference, “How did you hear about this”, future-walk updates, Address, and more. Saved together with “Save cart settings” below.
+        <div className={`${step === "register" ? "" : "hidden"} flex-1 min-h-0 flex flex-col`}>
+          <p className={`${adminUi.text.body} mb-2 shrink-0`} style={{ color: theme.mutedColor }}>
+            Registration form — drag in the fields visitors fill out. Saved with “Save cart settings” on the Page screen.
           </p>
 
           {regForm.fields.length > 0 && regForm.warnings.includes("noSubmitterEmail") && (
@@ -418,20 +456,32 @@ export default function AdminExperienceBuilder() {
             </p>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-[176px_1fr_232px] gap-3 items-start">
+          <div className="flex flex-col lg:flex-row gap-3 flex-1 min-h-0 overflow-y-auto lg:overflow-hidden items-start lg:items-stretch">
+            <div className="w-full lg:w-44 lg:shrink-0 lg:h-full lg:min-h-0 lg:overflow-y-auto">
             <FieldPalette
-              onAdd={(blockKey) => regForm.addField(blockKey)}
+              hiddenKeys={pageContent.cartOwnedFieldKeys}
+              onAdd={(blockKey) => { setRegCartSelected(false); regForm.addField(blockKey); }}
               onDragStartNew={(blockKey) => setRegFormDrag({ kind: "new", blockKey })}
               onDragEnd={() => setRegFormDrag(null)}
             />
 
+            </div>
+            <div className="w-full lg:flex-1 lg:min-w-0 lg:h-full lg:min-h-0 rounded-lg border overflow-hidden" style={{ borderColor: theme.borderColor, backgroundColor: pageTheme.pageBackground, color: pageTheme.textColor }}>
+            {/* Two independent scrollers, like the public page: only the form
+                column scrolls; the booking card stays put. */}
+            <div className="flex flex-col lg:flex-row gap-8 lg:h-full px-6 md:px-10">
+            <div className="lg:w-2/3 w-full min-w-0 lg:h-full lg:overflow-y-auto py-8 lg:pr-2">
+              <p className="uppercase tracking-widest text-xs font-bold mb-2" style={{ color: pageTheme.accentColor }}>{typeLabel}</p>
+              <h1 className="text-4xl font-serif mb-6">{builder.title || pageContent.registrationTitleFallback}</h1>
+              <h2 className="text-2xl font-serif mb-3" style={{ color: pageTheme.accentColor }}>{pageContent.registrationHeading}</h2>
             <BuilderCanvas
+              light
               fields={regForm.fields}
               selectedId={regForm.selectedId}
-              onSelect={regForm.setSelectedId}
+              onSelect={(id) => { setRegCartSelected(false); regForm.setSelectedId(id); }}
               onMove={regForm.moveField}
               onNudge={regForm.nudgeField}
-              onInsertNew={regForm.addField}
+              onInsertNew={(blockKey, at) => { setRegCartSelected(false); regForm.addField(blockKey, at); }}
               onRemove={regForm.removeField}
               onDuplicate={regForm.duplicateField}
               onWidthChange={(id, width) => regForm.updateField(id, { width })}
@@ -439,13 +489,65 @@ export default function AdminExperienceBuilder() {
               onDragEnd={() => setRegFormDrag(null)}
               onDragStartMove={(index) => setRegFormDrag({ kind: "move", index })}
             />
-
-            <FieldSettings
-              field={regForm.selectedField}
-              onChange={regForm.updateField}
-              onChangeChild={regForm.updateChild}
-              onRemove={regForm.removeField}
-            />
+            </div>
+            <aside className="lg:w-1/3 w-full lg:h-full lg:overflow-y-auto py-8 px-2 -mx-2">
+              <CartSlot
+                selected={regCartSelected}
+                onClick={() => { regForm.setSelectedId(null); setRegCartSelected(true); }}
+                requiresPayment={requiresPayment}
+                price={price}
+                currency={currency}
+                capacityTotal={capacityTotal}
+                registrationType={registrationType}
+                privateSlots={privateSlots}
+                privateMinPeople={privateMinPeople}
+                startDate={builder.startDate}
+              />
+            </aside>
+            </div>
+            </div>
+            <div className="w-full lg:w-58 lg:shrink-0 lg:h-full lg:min-h-0 lg:overflow-y-auto">
+            {regCartSelected ? (
+              <ExperienceBlockSettings
+                experienceType={experienceType}
+                block={null}
+                selectedId={CART_BLOCK_ID}
+                isAdmin={isAdmin}
+                hasExperienceId={Boolean(experienceId)}
+                token={token}
+                startDate={builder.startDate}
+                endDate={builder.endDate}
+                bookingEndDate={builder.bookingEndDate}
+                onStartDateChange={builder.setStartDate}
+                onEndDateChange={builder.setEndDate}
+                onBookingEndDateChange={builder.setBookingEndDate}
+                requiresPayment={requiresPayment}
+                onRequiresPaymentChange={setRequiresPayment}
+                price={price}
+                onPriceChange={setPrice}
+                currency={currency}
+                onCurrencyChange={setCurrency}
+                capacityTotal={capacityTotal}
+                onCapacityTotalChange={setCapacityTotal}
+                registrationType={registrationType}
+                onRegistrationTypeChange={setRegistrationType}
+                privateSlots={privateSlots}
+                onPrivateSlotsChange={setPrivateSlots}
+                privateMinPeople={privateMinPeople}
+                onPrivateMinPeopleChange={setPrivateMinPeople}
+                onSaveCart={handleSaveCart}
+                cartSaving={cartSaving}
+                cartError={cartError}
+              />
+            ) : (
+              <FieldSettings
+                field={regForm.selectedField}
+                onChange={regForm.updateField}
+                onChangeChild={regForm.updateChild}
+                onRemove={regForm.removeField}
+              />
+            )}
+            </div>
           </div>
         </div>
       )}
@@ -463,7 +565,9 @@ export default function AdminExperienceBuilder() {
           currency={currency}
           capacityTotal={capacityTotal}
           registrationType={registrationType}
-          slots={slots}
+          privateSlots={privateSlots}
+          privateMinPeople={privateMinPeople}
+          registrationFields={regForm.fields}
           onClose={() => setShowPreview(false)}
         />
       )}

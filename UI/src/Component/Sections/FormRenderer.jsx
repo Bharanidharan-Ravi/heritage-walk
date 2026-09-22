@@ -15,12 +15,22 @@
 // / `role: "submitterEmail"`, seeded onto every new form but deletable like
 // anything else — FormPage reads those roles back off the answers.
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { formConfig } from "../Config/form.config";
 import { formBuilderConfig, isDisplayOnly, isConsent, isGroup } from "../Config/formBuilder.config";
 import { resolveOptions, isValidPincode, lookupPincode } from "../Config/indiaGeo.config";
 
 const { theme } = formConfig;
+
+// Light tone: inputs drawn on the cream public page (the experience
+// registration screen) instead of the dark form page. Read through context so
+// it reaches every nested control without threading a prop through each one.
+const LightToneContext = createContext(false);
+const useInputClass = (compact) => {
+  const light = useContext(LightToneContext);
+  if (light) return compact ? compactLightInputClass : fullLightInputClass;
+  return compact ? compactInputClass : fullInputClass;
+};
 
 export default function FormRenderer({
   form,
@@ -32,6 +42,9 @@ export default function FormRenderer({
   submitLabel,
   // Preview mode: renders identically but nothing is interactive or submitted.
   readOnly = false,
+  light = false,
+  // The page supplies its own action button (the booking card's Pay Now).
+  hideSubmit = false,
 }) {
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -39,6 +52,7 @@ export default function FormRenderer({
   };
 
   return (
+    <LightToneContext.Provider value={light}>
     <form onSubmit={handleSubmit} className="space-y-8" noValidate={readOnly}>
       <div className="grid grid-cols-12 gap-x-5 gap-y-6">
         {form.fields.map((field) => (
@@ -55,6 +69,7 @@ export default function FormRenderer({
         ))}
       </div>
 
+      {!hideSubmit && (
       <div>
         <button
           type="submit"
@@ -69,7 +84,9 @@ export default function FormRenderer({
           <p className="text-red-400 text-center text-sm mt-4 font-medium">{errorMessage}</p>
         )}
       </div>
+      )}
     </form>
+    </LightToneContext.Provider>
   );
 }
 
@@ -87,6 +104,7 @@ function FieldShell({ width, children }) {
  * several answers under dotted keys ("address.pincode") rather than one.
  */
 export function RenderedField({
+  light,
   field,
   value,
   values,
@@ -95,6 +113,15 @@ export function RenderedField({
   disabled = false,
   compact = false,
 }) {
+  // An explicit `light` prop wins; otherwise inherit from an enclosing provider.
+  if (light !== undefined) {
+    return (
+      <LightToneContext.Provider value={light}>
+        <RenderedField {...{ field, value, values, onChange, onChangeNamed, disabled, compact }} />
+      </LightToneContext.Provider>
+    );
+  }
+
   if (isDisplayOnly(field.type)) {
     return <DisplayBlock field={field} compact={compact} />;
   }
@@ -131,7 +158,7 @@ function InputField({ field, value, onChange, disabled, compact }) {
   // `compact` is the admin builder canvas rendering the same control at the
   // console's smaller scale (see Config/adminUi.config.jsx); the public page
   // and the preview keep the full-size version.
-  const inputClass = compact ? compactInputClass : fullInputClass;
+  const inputClass = useInputClass(compact);
   const options = resolveOptions(field);
   const v = field.validation || {};
 
@@ -259,7 +286,8 @@ function TextLikeInput({ field, value, onChange, disabled, compact }) {
   };
 
   const showError = invalid && Boolean(v.message);
-  const inputClass = compact ? compactInputClass : fullInputClass;
+  const inputClass = useInputClass(compact);
+  const light = useContext(LightToneContext);
 
   const input = (
     <input
@@ -286,7 +314,7 @@ function TextLikeInput({ field, value, onChange, disabled, compact }) {
       {v.prefix ? (
         <div className="flex">
           <span
-            className={`grid place-items-center border border-r-0 border-white/10 rounded-l-lg bg-white/5 shrink-0 ${
+            className={`grid place-items-center border border-r-0 rounded-l-lg shrink-0 ${light ? "border-black/10 bg-black/5" : "border-white/10 bg-white/5"} ${
               compact ? "px-2 text-[12px] rounded-l-md" : "px-3 text-sm"
             }`}
             style={{ color: theme.accentColor }}
@@ -313,6 +341,7 @@ function TextLikeInput({ field, value, onChange, disabled, compact }) {
  * "Other: whatever they typed" — still one string, still one key.
  */
 function CheckboxGroup({ field, options, value, onChange, disabled, compact }) {
+  const inputClass = useInputClass(compact);
   const otherLabel = field.otherLabel || "Other";
   const selected = value ? value.split(", ").filter(Boolean) : [];
 
@@ -372,7 +401,7 @@ function CheckboxGroup({ field, options, value, onChange, disabled, compact }) {
           value={otherText}
           disabled={disabled}
           onChange={(e) => setOtherText(e.target.value)}
-          className={compact ? compactInputClass : fullInputClass}
+          className={inputClass}
         />
       )}
     </div>
@@ -387,6 +416,7 @@ function CheckboxGroup({ field, options, value, onChange, disabled, compact }) {
  * required-field check works unchanged.
  */
 function ConsentBlock({ field, value, onChange, disabled, compact }) {
+  const light = useContext(LightToneContext);
   const accepted = value === ACCEPTED;
 
   return (
@@ -405,7 +435,7 @@ function ConsentBlock({ field, value, onChange, disabled, compact }) {
           className={`overflow-y-auto whitespace-pre-line rounded-lg border mb-3 ${
             compact ? "max-h-24 p-2 text-[11px]" : "max-h-64 p-4 text-sm"
           }`}
-          style={{ borderColor: theme.inputBorder, backgroundColor: "rgba(255,255,255,0.02)" }}
+          style={{ borderColor: theme.inputBorder, backgroundColor: light ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.02)" }}
         >
           {field.bodyText}
         </div>
@@ -534,6 +564,7 @@ function GroupBlock({ field, values, onChangeNamed, disabled, compact }) {
 // ------------------------------------------------------------ display blocks
 
 function DisplayBlock({ field, compact = false }) {
+  const light = useContext(LightToneContext);
   if (field.type === "divider") {
     return <hr className="border-0 border-t my-2" style={{ borderColor: theme.inputBorder }} />;
   }
@@ -541,7 +572,7 @@ function DisplayBlock({ field, compact = false }) {
     return (
       <h2
         className={`font-serif font-medium ${compact ? "text-[14px] pt-0.5" : "text-xl pt-2"}`}
-        style={{ color: theme.textColor }}
+        style={{ color: light ? "inherit" : theme.textColor }}
       >
         {field.label}
       </h2>
@@ -581,4 +612,13 @@ const fullInputClass =
 // Same control at the admin console's scale, for the builder canvas only.
 const compactInputClass =
   "w-full bg-[#0F161E] border border-white/10 rounded-md px-2.5 py-[5px] text-[12px] text-white " +
+  "focus:outline-none focus:border-[#C19D60] transition-colors disabled:opacity-70";
+
+// Light-tone twins of the two classes above, for the cream page.
+const fullLightInputClass =
+  "w-full bg-white border border-black/15 rounded-lg px-4 py-3.5 text-[#0b1720] placeholder:text-black/35 " +
+  "focus:outline-none focus:border-[#C19D60] transition-colors disabled:opacity-70";
+
+const compactLightInputClass =
+  "w-full bg-white border border-black/15 rounded-md px-2.5 py-[5px] text-[12px] text-[#0b1720] placeholder:text-black/35 " +
   "focus:outline-none focus:border-[#C19D60] transition-colors disabled:opacity-70";

@@ -10,38 +10,37 @@
 // SAME Admin-only state the canvas's cart widget edits (AdminExperienceBuilder)
 // — an Employee never sees a value there other than the defaults it starts at.
 
-import React from "react";
+import React, { useState } from "react";
 import { experienceBuilderConfig } from "../../Config/experienceBuilder.config";
 import { experiencePublicConfig } from "../../Config/experiencePublic.config";
-import ExperiencePageView from "../../Sections/ExperiencePageView";
+import ExperiencePageView, { BookingCard } from "../../Sections/ExperiencePageView";
+import { buildPreviewExperience } from "../../Sections/experienceBlockHelpers";
+import FormRenderer from "../../Sections/FormRenderer";
 
 export default function ExperiencePreviewModal({
   title, experienceType, blocks, startDate, endDate, bookingEndDate, onClose,
-  requiresPayment, price, currency, capacityTotal, registrationType, slots,
+  requiresPayment, price, currency, capacityTotal, registrationType,
+  privateSlots, privateMinPeople,
+  registrationFields = [],
 }) {
   const { theme, content } = experienceBuilderConfig;
+  const pub = experiencePublicConfig;
+
+  // "page" -> "register" when Book Now is clicked, mirroring the public flow
+  // (/experiences/:id -> /forms/:slug). Answers live here so they survive
+  // flipping back and forth, and nothing ever leaves the modal.
+  const [view, setView] = useState("page");
+  const [answers, setAnswers] = useState({});
 
   // Same shape ExperienceDetail.jsx gets from GET /api/experiences/public/{id}
   // — contentBlocks are already { blockKey, shape, label, value|items }, so
   // ExperiencePageView needs zero special-casing to read builder state vs.
   // saved state.
-  const experience = {
-    title,
-    type: experienceType,
-    contentBlocks: blocks,
-    startDate: startDate || null,
-    endDate: endDate || null,
-    bookingEndDate: bookingEndDate || null,
-    capacityRemaining: capacityTotal === "" || capacityTotal == null ? null : Number(capacityTotal),
-    capacityTotal: capacityTotal === "" || capacityTotal == null ? null : Number(capacityTotal),
-    requiresPayment: Boolean(requiresPayment),
-    price: requiresPayment ? Number(price) || 0 : 0,
-    currency: currency || "INR",
-    registrationType: registrationType || "Individual",
-    slots: slots || [],
-    bookingEnabled: true,
-    linkedFormSlug: null,
-  };
+  const experience = buildPreviewExperience({
+    title, experienceType, blocks, startDate, endDate, bookingEndDate,
+    requiresPayment, price, currency, capacityTotal, registrationType,
+    privateSlots, privateMinPeople,
+  });
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto" style={{ backgroundColor: experiencePublicConfig.theme.pageBackground }}>
@@ -62,7 +61,57 @@ export default function ExperiencePreviewModal({
         </button>
       </div>
 
-      <ExperiencePageView experience={experience} previewMode />
+      {view === "page" ? (
+        <ExperiencePageView experience={experience} previewMode onBook={() => setView("register")} />
+      ) : (
+        <section className="pt-10 pb-24 min-h-screen" style={{ backgroundColor: pub.theme.pageBackground, color: pub.theme.textColor }}>
+          <div className="max-w-7xl mx-auto px-6 lg:px-12">
+            <button
+              type="button"
+              onClick={() => setView("page")}
+              className="text-xs font-bold uppercase tracking-widest mb-6"
+              style={{ color: pub.theme.accentColor }}
+            >
+              {pub.content.registrationBackLabel}
+            </button>
+            <p className="uppercase tracking-widest text-xs font-bold mb-3" style={{ color: pub.theme.accentColor }}>
+              {pub.content.typeLabels[experienceType?.toLowerCase()] || experienceType}
+            </p>
+            <h1 className="text-4xl md:text-5xl font-serif font-medium mb-6 leading-tight">
+              {title || pub.content.registrationTitleFallback}
+            </h1>
+            <div className="flex flex-col lg:flex-row gap-12 xl:gap-16 mt-6">
+            <div className="lg:w-2/3 min-w-0">
+            <h2 className="text-2xl font-serif mb-5" style={{ color: pub.theme.accentColor }}>
+              {pub.content.registrationHeading}
+            </h2>
+            {registrationFields.length === 0 ? (
+              <p style={{ color: pub.theme.mutedColor }}>{pub.content.registrationEmptyNote}</p>
+            ) : (
+              <FormRenderer
+                light
+                form={{ fields: registrationFields }}
+                values={answers}
+                onChange={(name, value) => setAnswers((prev) => ({ ...prev, [name]: value }))}
+                hideSubmit
+              />
+            )}
+            </div>
+            <div className="lg:w-1/3">
+              <BookingCard
+                experience={experience}
+                theme={pub.theme}
+                content={pub.content}
+                previewMode
+                onBook={() => {}}
+                actionLabel={pub.content.payNowLabel}
+                actionNote={pub.content.registrationPreviewNote}
+              />
+            </div>
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

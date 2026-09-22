@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using ArchaeoTrails.Application.Interfaces;
 using ArchaeoTrails.Domain.Entities;
+using ArchaeoTrails.Domain.Enums;
 using ArchaeoTrails.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -54,6 +55,14 @@ namespace ArchaeoTrails.Infrastructure.Repositories
                 return submission;
             });
         }
+
+        public async Task<IReadOnlyList<DateTime>> GetBookedSlotsAsync(Guid formTemplateId) =>
+            await _db.FormSubmissions
+                .Where(s => s.FormTemplateId == formTemplateId
+                    && s.BookedSlot != null
+                    && (s.Status == SubmissionStatus.Paid || s.Status == SubmissionStatus.Submitted))
+                .Select(s => s.BookedSlot!.Value)
+                .ToListAsync();
 
         public Task<FormSubmission?> GetByRazorpayOrderIdAsync(string razorpayOrderId) =>
             _db.FormSubmissions.FirstOrDefaultAsync(s => s.RazorpayOrderId == razorpayOrderId);

@@ -61,12 +61,16 @@ export const experienceBuilderConfig = {
     emptyGalleryHint: "No images yet — click, then drag & drop or browse for some in the panel →",
     emptyLocationHint: "Not set — click, then fill it in on the right →",
     cartSkeletonTitle: "Booking widget",
-    cartSkeletonNote: "Visitors pick Individual/Private + a ticket count here. Price & capacity are set by an Admin.",
+    cartSkeletonNote: "Visitors pick Group/Private + a ticket count here. Price & capacity are set by an Admin.",
 
     // Schedule dates used to live in their own top toolbar/canvas slot; now
     // part of the cart widget's editor (ExperienceBlockSettings's CartEditor)
     // since which date(s) apply depends on Registration type, right there.
     startDateLabel: "Start date",
+    experienceDateLabel: "Experience date",
+    experienceDateHelp: "The day Group bookings run on.",
+    privateDatesHelp: "Private dates are generated from this Start – End range.",
+    dateNotSetSummary: "Not set",
     endDateLabel: "End date",
     bookingEndDateLabel: "Booking end date",
   },
@@ -202,8 +206,13 @@ const GROUP_ORDER = {
   course: ["Basic", "Course Details", "Schedule", "Details", "Repeatable"],
 };
 
+/** Blocks the booking cart owns (edited in Cart & Payment, shown in the cart
+ *  card) — kept in the catalogue so old saved pages still resolve, but never
+ *  offered in the palette or kept as page content. */
+export const CART_OWNED_BLOCK_KEYS = ["bookingEndDate"];
+
 export function getPaletteSections(experienceType) {
-  const catalog = getBlockCatalog(experienceType);
+  const catalog = getBlockCatalog(experienceType).filter((b) => !CART_OWNED_BLOCK_KEYS.includes(b.key));
   const order = GROUP_ORDER[experienceType] || ["Basic", "Repeatable"];
 
   return order

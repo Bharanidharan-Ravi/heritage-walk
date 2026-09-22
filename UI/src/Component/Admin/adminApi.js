@@ -158,4 +158,16 @@ export const adminApi = {
   // so a failure here never blocks removing the image from the block itself.
   deleteExperienceImage: (token, url) =>
     request(`/api/experiences/assets/image?url=${encodeURIComponent(url)}`, { method: "DELETE", token }),
+
+  // ---- Payment & Pricing (admin payment-settings + pricing calculator) ----
+  // Read-only from the Experience Builder's cart editor — it never writes
+  // PaymentSettings, only asks the calculator (server-side, decimal-accurate)
+  // what a given base amount needs to become. See PricingService on the API.
+  getPaymentSettings: (token) => request("/api/admin/payment-settings", { token }),
+  calculatePrice: (token, { baseAmount, customerAmount }) =>
+    request("/api/admin/payment-settings/calculate-price", {
+      method: "POST",
+      body: { baseAmount, customerAmount: customerAmount ?? null },
+      token,
+    }),
 };

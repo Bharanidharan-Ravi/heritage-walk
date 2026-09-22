@@ -64,7 +64,9 @@ export default function ExperienceCanvas({
   currency,
   capacityTotal,
   registrationType,
-  slots,
+  privateSlots,
+  privateMinPeople,
+  startDate,
 }) {
   const [dropIndex, setDropIndex] = useState(null);
   const clearDrop = () => setDropIndex(null);
@@ -353,7 +355,9 @@ export default function ExperienceCanvas({
                   currency={currency}
                   capacityTotal={capacityTotal}
                   registrationType={registrationType}
-                  slots={slots}
+                  privateSlots={privateSlots}
+                  privateMinPeople={privateMinPeople}
+                  startDate={startDate}
                   editable
                 />
               </Slot>
@@ -629,7 +633,7 @@ function CardButton({ children, label, onClick, disabled, danger }) {
  *  whatever's currently configured (still read-only HERE — clicking it
  *  selects CART_BLOCK_ID and the actual editing happens in the sidebar's
  *  CartEditor, same as every other slot on this canvas). */
-function CartSkeleton({ editable, requiresPayment, price, currency, capacityTotal, registrationType, slots }) {
+function CartSkeleton({ editable, requiresPayment, price, currency, capacityTotal, registrationType, privateSlots, privateMinPeople, startDate }) {
   if (!editable) {
     return (
       <div className="lg:sticky lg:top-4 rounded-3xl p-6 border-2 border-dashed" style={{ borderColor: pageTheme.borderColor, backgroundColor: pageTheme.cardBackground }}>
@@ -638,7 +642,7 @@ function CartSkeleton({ editable, requiresPayment, price, currency, capacityTota
         </span>
         <div className="grid grid-cols-2 gap-2 mb-3 pointer-events-none opacity-50">
           <div className="py-2 rounded-lg text-xs font-bold uppercase tracking-widest text-center border" style={{ borderColor: pageTheme.borderColor, color: pageTheme.mutedColor }}>
-            {pageContent.individualLabel}
+            {pageContent.groupLabel}
           </div>
           <div className="py-2 rounded-lg text-xs font-bold uppercase tracking-widest text-center border" style={{ borderColor: pageTheme.borderColor, color: pageTheme.mutedColor }}>
             {pageContent.privateLabel}
@@ -650,7 +654,7 @@ function CartSkeleton({ editable, requiresPayment, price, currency, capacityTota
     );
   }
 
-  const registrationLabel = { Individual: "Individual only", Private: "Private only", Both: "Individual + Private" }[registrationType] || registrationType;
+  const registrationLabel = { Group: "Group only", Private: "Private only", Both: "Group + Private" }[registrationType] || registrationType;
 
   return (
     <div className="lg:sticky lg:top-4 rounded-3xl p-6 border-2" style={{ borderColor: pageTheme.borderColor, backgroundColor: pageTheme.cardBackground }}>
@@ -660,10 +664,22 @@ function CartSkeleton({ editable, requiresPayment, price, currency, capacityTota
       <div className="space-y-2.5">
         <SummaryRow label="Price" value={requiresPayment ? `${currency} ${price || 0}` : "Free"} />
         <SummaryRow label="Registration" value={registrationLabel} />
-        {registrationType !== "Individual" && <SummaryRow label="Slots" value={slots?.length ? `${slots.length} date${slots.length === 1 ? "" : "s"}` : "None set yet"} />}
+        {registrationType !== "Private" && <SummaryRow label={builderContent.experienceDateLabel} value={startDate || builderContent.dateNotSetSummary} />}
+        {registrationType !== "Group" && <SummaryRow label="Private dates" value={privateSlots?.length ? `${privateSlots.length} date${privateSlots.length === 1 ? "" : "s"}` : "None set yet"} />}
+        {registrationType !== "Group" && <SummaryRow label="Private min." value={`${privateMinPeople || 1} people`} />}
         <SummaryRow label="Capacity" value={capacityTotal === "" || capacityTotal == null ? "Unlimited" : capacityTotal} />
       </div>
     </div>
+  );
+}
+
+/** The Admin's selectable "Booking widget — click to edit" card, reused by the
+ *  builder's Registration screen so both screens edit the cart the same way. */
+export function CartSlot({ selected, onClick, ...summary }) {
+  return (
+    <Slot selected={selected} onClick={onClick}>
+      <CartSkeleton editable {...summary} />
+    </Slot>
   );
 }
 

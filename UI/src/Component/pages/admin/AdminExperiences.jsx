@@ -491,8 +491,9 @@ function SetPaymentModal({ row, token, onClose, onSaved }) {
   // registration type/slots now (Admin-only) — but this modal still PUTs the
   // whole payment request, so these have to be carried through untouched or
   // a price-only save from here would silently reset them.
-  const registrationType = row.registrationType || "Individual";
-  const slots = row.slots || [];
+  const registrationType = !row.registrationType || row.registrationType === "Individual" ? "Group" : row.registrationType;
+  const privateSlots = row.privateSlots || [];
+  const privateMinPeople = row.privateMinPeople || 1;
 
   useEffect(() => {
     adminApi.listForms(token).then(setForms).catch(() => {});
@@ -509,7 +510,9 @@ function SetPaymentModal({ row, token, onClose, onSaved }) {
         capacityTotal: capacityTotal === "" ? null : Number(capacityTotal),
         linkedFormTemplateId: linkedFormTemplateId || null,
         registrationType,
-        slots,
+        slots: [],
+        privateSlots,
+        privateMinPeople,
       });
       await onSaved();
     } catch (err) {

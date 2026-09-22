@@ -221,6 +221,22 @@ namespace ArchaeoTrails.Api.Controllers
                 });
             }
 
+            // A form linked to an Experience: a Private booking must name one of
+            // that experience's still-free Private dates, and takes it off the
+            // public list once saved. Checked before payment verification so a
+            // taken date is rejected up front.
+            var linkedExperience = await _experienceTemplateRepository.GetByLinkedFormTemplateIdAsync(template.Id);
+            DateTime? bookedSlot = null;
+            if (linkedExperience is not null)
+            {
+                var (slot, slotError) = await ResolvePrivateSlotAsync(linkedExperience, template.Id, request.Slot);
+                if (slotError is not null)
+                {
+                    return BadRequest(new SubmitFormResponse { Success = false, Message = slotError });
+                }
+                bookedSlot = slot;
+            }
+
             if (template.RequiresPayment)
             {
                 // THE ONLY SOURCE OF TRUTH for "did they pay" — never trust the
@@ -244,6 +260,7 @@ namespace ArchaeoTrails.Api.Controllers
                 DataJson = JsonSerializer.Serialize(request.FormData),
                 SubmitterName = request.SubmitterName,
                 SubmitterEmail = request.SubmitterEmail,
+                BookedSlot = bookedSlot,
                 // A free form never records money, whatever the client sent.
                 AmountPaid = template.RequiresPayment ? template.Price : 0m,
                 Currency = template.Currency,
@@ -255,7 +272,6 @@ namespace ArchaeoTrails.Api.Controllers
             // Every form's default path, unchanged. Only a form linked to a
             // capacity-limited Experience (Experiences module) takes the
             // concurrency-safe branch below — see IFormSubmissionRepository.
-            var linkedExperience = await _experienceTemplateRepository.GetByLinkedFormTemplateIdAsync(template.Id);
             if (linkedExperience is not null && linkedExperience.CapacityTotal.HasValue)
             {
                 var reserved = await _formSubmissionRepository.TryCreateWithCapacityAsync(submission, linkedExperience.Id);
@@ -295,6 +311,42 @@ namespace ArchaeoTrails.Api.Controllers
             }
 
             return Ok(new SubmitFormResponse { Success = true, SubmissionId = submission.Id });
+        }
+
+        /// <summary>
+        /// Validates the submitted Private date against the experience. Group
+        /// bookings (no slot) pass through as (null, null); a Private-only
+        /// experience with no slot is an error. Not atomic against two people
+        /// taking the same last date at the same instant.
+        /// </summary>
+        private async Task<(DateTime? Slot, string? Error)> ResolvePrivateSlotAsync(
+            ExperienceTemplate experience, Guid formTemplateId, string? rawSlot)
+        {
+            if (string.IsNullOrWhiteSpace(rawSlot))
+            {
+                return experience.RegistrationType == RegistrationType.Private
+                    ? (null, "Please choose a date for your private booking.")
+                    : (null, null);
+            }
+
+            if (experience.RegistrationType == RegistrationType.Group)
+            {
+                return (null, "Private bookings aren't offered for this experience.");
+            }
+            if (!DateTime.TryParse(rawSlot, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
+                    out var parsed))
+            {
+                return (null, "That date isn't valid.");
+            }
+
+            var booked = await _formSubmissionRepository.GetBookedSlotsAsync(formTemplateId);
+            var available = ExperiencesController.AvailablePrivateSlots(experience.PrivateSlotsJson, booked);
+            if (!available.Any(d => d.Date == parsed.Date))
+            {
+                return (null, "Sorry, that date is no longer available. Please choose another.");
+            }
+            return (parsed.Date, null);
         }
 
         // GET /api/forms  (Admin/Employee only) — every template incl. inactive.

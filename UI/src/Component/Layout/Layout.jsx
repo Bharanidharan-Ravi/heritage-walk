@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { heroConfig } from "../Config/heroConfig";
+import { isTestMode, SANITY_DATASET } from "../../testMode";
 
 export default function Layout() {
   const navigate = useNavigate();
@@ -52,7 +53,13 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col font-serif bg-[#0b1720]">
-      
+      {isTestMode && (
+        <div className="fixed bottom-0 left-0 z-[100] bg-red-600 text-white text-xs px-3 py-1 rounded-tr">
+          TEST MODE — dataset: {SANITY_DATASET} ·{" "}
+          <a href="/test/console" className="underline">console</a>
+        </div>
+      )}
+
       <header 
          className={`fixed top-0 w-full z-50 transition-all duration-500 ease-in-out border-b ${
           isScrolled 
