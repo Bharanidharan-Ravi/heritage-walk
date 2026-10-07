@@ -4,20 +4,29 @@ import Sitemap from 'vite-plugin-sitemap';
 // Note: Using relative path './src/...' is safer in vite config than absolute '/src/...'
 import { client } from "./src/sanityClient.js"; 
 
-export default defineConfig(async () => {
-  
-  // 1. Fetch walk slugs
-  const walkQuery = `*[_type == "walk" && defined(slug.current)]{ "slug": slug.current }`;
-  const walks = await client.fetch(walkQuery);
-  const walkRoutes = walks.map((walk) => `/walks/${walk.slug}`);
+export default defineConfig(async ({ command }) => {
 
-  // 2. Fetch blog slugs (Change "post" to your actual schema name if different)
-  const blogQuery = `*[_type == "post" && defined(slug.current)]{ "slug": slug.current }`;
-  const blogs = await client.fetch(blogQuery);
-  const blogRoutes = blogs.map((blog) => `/blogs/${blog.slug}`);
+  // Sitemap routes are only needed for production builds; skip the Sanity
+  // fetch in dev so `vite`/`vite dev` doesn't fail when Sanity is unreachable.
+  let allDynamicRoutes = [];
+  if (command === 'build') {
+    try {
+      // 1. Fetch walk slugs
+      const walkQuery = `*[_type == "walk" && defined(slug.current)]{ "slug": slug.current }`;
+      const walks = await client.fetch(walkQuery);
+      const walkRoutes = walks.map((walk) => `/walks/${walk.slug}`);
 
-  // 3. Combine both arrays into one master list of dynamic routes
-  const allDynamicRoutes = [...walkRoutes, ...blogRoutes];
+      // 2. Fetch blog slugs (Change "post" to your actual schema name if different)
+      const blogQuery = `*[_type == "post" && defined(slug.current)]{ "slug": slug.current }`;
+      const blogs = await client.fetch(blogQuery);
+      const blogRoutes = blogs.map((blog) => `/blogs/${blog.slug}`);
+
+      // 3. Combine both arrays into one master list of dynamic routes
+      allDynamicRoutes = [...walkRoutes, ...blogRoutes];
+    } catch (err) {
+      console.warn('[vite.config] Could not fetch dynamic sitemap routes from Sanity, continuing without them:', err.message);
+    }
+  }
 
   return {
     plugins: [

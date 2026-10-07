@@ -1,3 +1,4 @@
+using ArchaeoTrails.Application.Features.Bookings;
 using ArchaeoTrails.Application.Features.Contact;
 using ArchaeoTrails.Domain.Entities;
 using System.Threading.Tasks;
@@ -16,5 +17,11 @@ namespace ArchaeoTrails.Application.Interfaces
 
         /// <summary>Confirms to the person who filled the form that payment + submission succeeded.</summary>
         Task<bool> SendFormSubmissionConfirmationEmailAsync(FormTemplate form, FormSubmission submission);
+
+        /// <summary>Experience booking paid (Cashfree) — the visitor's confirmation with their booking ID.</summary>
+        Task<bool> SendBookingConfirmationEmailAsync(BookingConfirmationEmail booking);
+
+        /// <summary>Experience booking paid (Cashfree) — notifies the site owner.</summary>
+        Task<bool> SendBookingOwnerEmailAsync(BookingConfirmationEmail booking);
     }
 }

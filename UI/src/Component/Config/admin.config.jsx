@@ -43,6 +43,34 @@ export const adminConfig = {
     invalidCredentials: "Invalid username or password.",
   },
 
+  // Submissions page — status filter cards. `value` must match the API's
+  // SubmissionStatus enum names (Domain/Enums/SubmissionStatus.cs); "All" is
+  // the no-filter card.
+  submissions: {
+    title: "Submissions",
+    searchPlaceholder: "Search name, email, phone or ID…",
+    allRegistrationTypes: "All registration types",
+    emptyFiltered: "No submissions match these filters.",
+    detailTitle: "Submission details",
+    // Order-by dropdown. `field` is read off the submission DTO.
+    sortOptions: [
+      { value: "newest", label: "Newest first", field: "createdAt", dir: "desc" },
+      { value: "oldest", label: "Oldest first", field: "createdAt", dir: "asc" },
+      { value: "amountDesc", label: "Amount: high to low", field: "amountPaid", dir: "desc" },
+      { value: "amountAsc", label: "Amount: low to high", field: "amountPaid", dir: "asc" },
+      { value: "nameAsc", label: "Name: A to Z", field: "submitterName", dir: "asc" },
+      { value: "nameDesc", label: "Name: Z to A", field: "submitterName", dir: "desc" },
+    ],
+    statusFilters: [
+      { value: "All", label: "All", color: "#F4F1EA" },
+      { value: "PendingPayment", label: "Pending", color: "#E0B86C" },
+      { value: "Paid", label: "Paid", color: "#6CC19D" },
+      { value: "Expired", label: "Expired", color: "#E06C6C" },
+      { value: "Failed", label: "Failed", color: "#C1606C" },
+      { value: "Submitted", label: "Submitted", color: "#6C9DC1" },
+    ],
+  },
+
   users: {
     title: "Users & Roles",
     createHeading: "Create account",

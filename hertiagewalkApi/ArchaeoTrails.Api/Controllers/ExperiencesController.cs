@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using ArchaeoTrails.Application.Features.Experiences;
 using ArchaeoTrails.Application.Interfaces;
+using ArchaeoTrails.Application.Services;
 using ArchaeoTrails.Domain.Constants;
 using ArchaeoTrails.Domain.Entities;
 using ArchaeoTrails.Domain.Enums;
@@ -92,7 +93,8 @@ namespace ArchaeoTrails.Api.Controllers
                 // fetch a whole tab's rows in one call and filter/sort/
                 // paginate client-side (see AdminExperiences.jsx) instead of
                 // re-querying SQL on every search keystroke/sort/page change.
-                PageSize = Math.Clamp(pageSize, 1, 500)
+                PageSize = Math.Clamp(pageSize, 1, 500),
+                IsTest = IsTestSite
             };
 
             // Employees only ever see their own Pending work; Admins see everyone's.
@@ -148,7 +150,8 @@ namespace ArchaeoTrails.Api.Controllers
                 Search = search,
                 Sort = ExperienceSort.StartDateAsc,
                 Page = page,
-                PageSize = Math.Clamp(pageSize, 1, 100)
+                PageSize = Math.Clamp(pageSize, 1, 100),
+                IsTest = IsTestSite
             };
 
             var result = await _experiences.QueryAsync(query);
@@ -180,7 +183,7 @@ namespace ArchaeoTrails.Api.Controllers
         public async Task<IActionResult> GetPublicById(Guid id)
         {
             var experience = await _experiences.GetByIdAsync(id);
-            if (experience is null || experience.Status != ExperienceStatus.Published)
+            if (experience is null || experience.Status != ExperienceStatus.Published || experience.IsTest != IsTestSite)
             {
                 // Never distinguishes "doesn't exist" from "not published yet" to an anonymous caller.
                 return NotFound();
@@ -199,7 +202,7 @@ namespace ArchaeoTrails.Api.Controllers
             if (experience.LinkedFormTemplateId.HasValue && privateSlots.Count > 0)
             {
                 var booked = await _formSubmissions.GetBookedSlotsAsync(experience.LinkedFormTemplateId.Value);
-                privateSlots = AvailablePrivateSlots(experience.PrivateSlotsJson, booked);
+                privateSlots = BookingRules.AvailablePrivateSlots(experience.PrivateSlotsJson, booked);
             }
 
             var bookingEnabled = linkedFormSlug is not null &&
@@ -216,6 +219,7 @@ namespace ArchaeoTrails.Api.Controllers
                 ContentBlocks = JsonSerializer.Deserialize<List<object>>(experience.ContentBlocksJson) ?? new(),
                 RequiresPayment = experience.RequiresPayment,
                 Price = experience.Price,
+                PrivatePrice = experience.PrivatePrice,
                 Currency = experience.Currency,
                 CapacityTotal = experience.CapacityTotal,
                 CapacityRemaining = experience.CapacityRemaining,
@@ -263,12 +267,81 @@ namespace ArchaeoTrails.Api.Controllers
                 StartDate = request.StartDate,
                 EndDate = request.EndDate,
                 BookingEndDate = request.BookingEndDate,
+                IsTest = IsTestSite,
                 CreatedByUserId = GetUserId()
             };
 
             await _experiences.CreateAsync(experience);
             await _events.ExperienceCreatedAsync(experience.Id);
             return Ok(new { status = "success", id = experience.Id });
+        }
+
+        // POST /api/experiences/{id}/clone
+        // Copies an experience (any status) into a new Draft owned by the
+        // caller. The linked registration form is copied too, never shared —
+        // the builder edits the linked form in place and booking counts are
+        // per form, so a shared form would leak edits/bookings between the two.
+        // Dates are NOT copied (a clone is usually the same walk on a new day,
+        // and the old dates would make it land straight in Closed when
+        // published); only Private dates still in the future carry over.
+        [HttpPost("{id:guid}/clone")]
+        public async Task<IActionResult> Clone(Guid id, [FromBody] CloneExperienceRequest? request)
+        {
+            var source = await _experiences.GetByIdAsync(id);
+            if (source is null) return NotFound();
+
+            var title = string.IsNullOrWhiteSpace(request?.Title) ? CopyTitle(source.Title) : request!.Title!.Trim();
+            if (title.Length > 200) title = title[..200];
+
+            Guid? linkedFormId = null;
+            if (source.LinkedFormTemplateId.HasValue)
+            {
+                var sourceForm = await _formTemplates.GetByIdAsync(source.LinkedFormTemplateId.Value);
+                if (sourceForm is not null)
+                {
+                    var formTitle = $"{title} — Registration";
+                    var form = new FormTemplate
+                    {
+                        Title = formTitle,
+                        Description = sourceForm.Description,
+                        Slug = Slugify(formTitle) + "-" + Guid.NewGuid().ToString("N")[..6],
+                        FieldsJson = sourceForm.FieldsJson,
+                        RequiresPayment = sourceForm.RequiresPayment,
+                        Price = sourceForm.Price,
+                        Currency = sourceForm.Currency,
+                        IsActive = sourceForm.IsActive
+                    };
+                    await _formTemplates.CreateAsync(form);
+                    linkedFormId = form.Id;
+                }
+            }
+
+            var copy = new ExperienceTemplate
+            {
+                Type = source.Type,
+                Status = ExperienceStatus.Draft,
+                Title = title,
+                ContentBlocksJson = source.ContentBlocksJson,
+                RequiresPayment = source.RequiresPayment,
+                Price = source.Price,
+                PrivatePrice = source.PrivatePrice,
+                Currency = source.Currency,
+                CapacityTotal = source.CapacityTotal,
+                CapacityRemaining = source.CapacityTotal,
+                LinkedFormTemplateId = linkedFormId,
+                RegistrationType = source.RegistrationType,
+                SlotsJson = "[]",
+                PrivateSlotsJson = JsonSerializer.Serialize(
+                    (JsonSerializer.Deserialize<List<DateTime>>(source.PrivateSlotsJson) ?? new())
+                        .Where(d => d.Date >= DateTime.UtcNow.Date)),
+                PrivateMinPeople = source.PrivateMinPeople,
+                IsTest = source.IsTest,
+                CreatedByUserId = GetUserId()
+            };
+
+            await _experiences.CreateAsync(copy);
+            await _events.ExperienceCreatedAsync(copy.Id);
+            return Ok(new { status = "success", id = copy.Id });
         }
 
         // PUT /api/experiences/{id}
@@ -329,6 +402,10 @@ namespace ArchaeoTrails.Api.Controllers
             {
                 return BadRequest(new { status = "error", message = "Add at least one bookable date for Private registration." });
             }
+            if (offersPrivate && request.RequiresPayment && request.PrivatePrice is <= 0)
+            {
+                return BadRequest(new { status = "error", message = "Private price must be above zero, or left empty to use the normal price." });
+            }
             if (offersPrivate && request.PrivateMinPeople < 1)
             {
                 return BadRequest(new { status = "error", message = "Private minimum people must be at least 1." });
@@ -336,6 +413,7 @@ namespace ArchaeoTrails.Api.Controllers
 
             experience.RequiresPayment = request.RequiresPayment;
             experience.Price = request.RequiresPayment ? request.Price : 0m;
+            experience.PrivatePrice = request.RequiresPayment && offersPrivate ? request.PrivatePrice : null;
             experience.Currency = request.Currency;
             experience.CapacityTotal = request.CapacityTotal;
             // Re-seed the atomic counter whenever capacity is (re)configured.
@@ -451,6 +529,17 @@ namespace ArchaeoTrails.Api.Controllers
             {
                 return BadRequest(new { status = "error", message = "Link a registration form before publishing." });
             }
+            // Publishing with a past date would file it straight under Closed
+            // (see EfExperienceTemplateRepository's Active/Closed tabs).
+            if (experience.StartDate.HasValue && experience.EndDate.HasValue && experience.EndDate < experience.StartDate)
+            {
+                return BadRequest(new { status = "error", message = "The end date is before the start date. Fix the dates before publishing." });
+            }
+            var lastDay = experience.EndDate ?? experience.StartDate;
+            if (lastDay.HasValue && lastDay.Value.Date < DateTime.UtcNow.Date)
+            {
+                return BadRequest(new { status = "error", message = "This experience's date has already passed. Set a future date before publishing." });
+            }
 
             experience.Status = ExperienceStatus.Published;
             experience.PublishedAt = DateTime.UtcNow;
@@ -554,6 +643,23 @@ namespace ArchaeoTrails.Api.Controllers
 
         // ---- helpers ---------------------------------------------------------
 
+        // The /test site sends X-Site-Env: test (see UI/src/testMode.js) so its
+        // experiences stay separate from the live site's.
+        private bool IsTestSite =>
+            string.Equals(Request.Headers["X-Site-Env"], "test", StringComparison.OrdinalIgnoreCase);
+
+        // Title/slug columns are max 200 chars.
+        private static string CopyTitle(string title)
+        {
+            var copy = $"{title} (Copy)";
+            return copy.Length > 200 ? copy[..200] : copy;
+        }
+
+        // Same shape as FormsController.Slugify, for the cloned registration form.
+        private static string Slugify(string title) =>
+            new string(title.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray())
+                .Trim('-');
+
         private async Task SyncAsync(ExperienceTemplate experience, bool publish)
         {
             var result = publish
@@ -571,22 +677,6 @@ namespace ArchaeoTrails.Api.Controllers
             // Sync status is best-effort bookkeeping on an already-saved row —
             // never lets a Sanity failure undo the workflow transition above.
             await _experiences.UpdateAsync(experience);
-        }
-
-        /// <summary>
-        /// The Private dates still free: each booked date removes ONE matching
-        /// entry from the configured list (a date may be listed twice, e.g. a
-        /// morning and an evening batch, and each is bookable once).
-        /// </summary>
-        internal static List<DateTime> AvailablePrivateSlots(string privateSlotsJson, IEnumerable<DateTime> booked)
-        {
-            var all = (JsonSerializer.Deserialize<List<DateTime>>(privateSlotsJson) ?? new()).OrderBy(d => d).ToList();
-            foreach (var taken in booked)
-            {
-                var i = all.FindIndex(d => d.Date == taken.Date);
-                if (i >= 0) all.RemoveAt(i);
-            }
-            return all;
         }
 
         private Guid GetUserId()
@@ -626,6 +716,7 @@ namespace ArchaeoTrails.Api.Controllers
                 Status = e.Status.ToString(),
                 RequiresPayment = e.RequiresPayment,
                 Price = e.Price,
+                PrivatePrice = e.PrivatePrice,
                 Currency = e.Currency,
                 BookingConfirmed = confirmed,
                 CapacityTotal = e.CapacityTotal,
@@ -634,6 +725,7 @@ namespace ArchaeoTrails.Api.Controllers
                 Slots = JsonSerializer.Deserialize<List<DateTime>>(e.SlotsJson) ?? new(),
                 PrivateSlots = JsonSerializer.Deserialize<List<DateTime>>(e.PrivateSlotsJson) ?? new(),
                 PrivateMinPeople = e.PrivateMinPeople,
+                LinkedFormTemplateId = e.LinkedFormTemplateId,
                 StartDate = e.StartDate,
                 EndDate = e.EndDate,
                 BookingEndDate = e.BookingEndDate,
@@ -660,6 +752,7 @@ namespace ArchaeoTrails.Api.Controllers
                 ContentBlocks = JsonSerializer.Deserialize<List<object>>(e.ContentBlocksJson) ?? new(),
                 RequiresPayment = e.RequiresPayment,
                 Price = e.Price,
+                PrivatePrice = e.PrivatePrice,
                 Currency = e.Currency,
                 CapacityTotal = e.CapacityTotal,
                 CapacityRemaining = e.CapacityRemaining,

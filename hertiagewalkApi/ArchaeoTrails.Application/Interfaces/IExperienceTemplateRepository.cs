@@ -39,6 +39,9 @@ namespace ArchaeoTrails.Application.Interfaces
 
         /// <summary>Set when the caller is an Employee and Tab == Pending — restricts results to their own rows.</summary>
         public Guid? OwnerScopeUserId { get; set; }
+
+        /// <summary>Which site's rows to return: /test (true) or the live site (false).</summary>
+        public bool IsTest { get; set; }
     }
 
     public class ExperienceListPage
@@ -64,6 +67,9 @@ namespace ArchaeoTrails.Application.Interfaces
         Task<ExperienceTemplate> CreateAsync(ExperienceTemplate experience);
 
         Task UpdateAsync(ExperienceTemplate experience);
+
+        /// <summary>Ids of every FormTemplate an experience uses as its registration form.</summary>
+        Task<IReadOnlySet<Guid>> GetLinkedFormTemplateIdsAsync();
 
         /// <summary>
         /// Server-side paginated/filtered/sorted list for the management page.

@@ -60,9 +60,8 @@ function uniqueName(base, fields, ignoreId) {
   return `${base}${n}`;
 }
 
-/** Sensible span when a template doesn't state one. */
-const defaultWidth = (type) =>
-  type === "textarea" || isDisplayOnly(type) || isConsent(type) || isGroup(type) ? 12 : 6;
+/** Sensible span when a template doesn't state one — full width by default. */
+const defaultWidth = () => 12;
 
 /**
  * Build a field instance from a catalogue block key.
@@ -108,14 +107,72 @@ export function createField(blockKey, existingFields = []) {
 /** The answer key a group's sub-field is submitted under: "address.pincode". */
 export const childAnswerName = (field, child) => `${field.name}.${child.name}`;
 
+/**
+ * Build a fresh field array from catalogue block keys, expanding any
+ * paired blocks (Name -> First Name + Last Name) the same way `addField`
+ * does for a drag-and-drop — used to seed the canvas on "new form" / reset.
+ */
+function buildDefaultFields(blockKeys) {
+  return blockKeys.reduce((acc, key) => {
+    const field = createField(key, acc);
+    const pairedTemplate = blockByKey[key]?.pairedField;
+    if (!pairedTemplate) return [...acc, field];
+
+    const pairId = nextId();
+    field.pairId = pairId;
+    const pairedField = {
+      ...deepClone(pairedTemplate),
+      id: nextId(),
+      blockKey: key,
+      pairId,
+      name: uniqueName(pairedTemplate.name || toFieldName(pairedTemplate.label), [...acc, field]),
+      required: pairedTemplate.required ?? false,
+      placeholder: pairedTemplate.placeholder ?? "",
+      helpText: pairedTemplate.helpText ?? "",
+      options: pairedTemplate.options ?? [],
+      width: pairedTemplate.width ?? defaultWidth(pairedTemplate.type),
+    };
+    return [...acc, field, pairedField];
+  }, []);
+}
+
 /** Rehydrate fields loaded from the API (no builder-local ids yet) — same idea
  *  as useExperienceBuilder's hydrateBlocks. */
 function hydrateFields(rawFields) {
-  return (rawFields || []).map((f) => ({
-    ...f,
-    id: nextId(),
-    children: f.children?.map((c) => ({ ...c, id: nextId() })),
-  }));
+  return upgradeLegacyFields(
+    (rawFields || []).map((f) => ({
+      ...f,
+      id: nextId(),
+      children: f.children?.map((c) => ({ ...c, id: nextId() })),
+    }))
+  );
+}
+
+/**
+ * Forms saved before the Name block became a First + Last pair hold a single
+ * "fullName" field. Split it into the pair on load; and a form that is still
+ * exactly the old untouched default (Full Name + Email, nothing else) gets the
+ * current default set instead. A Name the author deliberately folded back into
+ * one field is marked pairRole "merged" (see removeField) and left alone.
+ */
+function upgradeLegacyFields(fields) {
+  const isLegacyName = (f) => f.role === "submitterName" && f.name === "fullName" && !f.pairId && !f.pairRole;
+  const legacyIndex = fields.findIndex(isLegacyName);
+  if (legacyIndex === -1) return fields;
+
+  const untouchedOldDefault =
+    fields.length === 2 &&
+    legacyIndex === 0 &&
+    fields[0].label === "Full Name" &&
+    fields[1].role === "submitterEmail" &&
+    fields[1].label === "Email Address";
+  if (untouchedOldDefault) return buildDefaultFields(DEFAULT_FORM_BLOCKS);
+
+  const others = fields.filter((_, i) => i !== legacyIndex);
+  const pair = buildDefaultFields(["fullName"]).map((f) => ({ ...f, name: uniqueName(f.name, others) }));
+  const next = [...fields];
+  next.splice(legacyIndex, 1, ...pair);
+  return next;
 }
 
 export function useFormBuilder() {
@@ -127,9 +184,7 @@ export function useFormBuilder() {
   // A new form opens with Name and Email already on the canvas — they used to
   // be hardcoded into the renderer, invisible and uneditable. They are now
   // ordinary blocks the author can rename, resize, un-require or delete.
-  const [fields, setFields] = useState(() =>
-    DEFAULT_FORM_BLOCKS.reduce((acc, key) => [...acc, createField(key, acc)], [])
-  );
+  const [fields, setFields] = useState(() => buildDefaultFields(DEFAULT_FORM_BLOCKS));
   const [selectedId, setSelectedId] = useState(null);
 
   /** Insert a brand-new field from catalogue block `blockKey`, optionally at a position. */
@@ -138,7 +193,30 @@ export function useFormBuilder() {
       const field = createField(blockKey, prev);
       const at = index === undefined || index === null ? prev.length : index;
       const next = [...prev];
-      next.splice(at, 0, field);
+
+      // A block can drop as a pair (Name -> First Name + Last Name). Both
+      // instances share a pairId so removeField can find its partner later.
+      const pairedTemplate = blockByKey[blockKey]?.pairedField;
+      if (pairedTemplate) {
+        const pairId = nextId();
+        field.pairId = pairId;
+        const pairedField = {
+          ...deepClone(pairedTemplate),
+          id: nextId(),
+          blockKey,
+          pairId,
+          name: uniqueName(pairedTemplate.name || toFieldName(pairedTemplate.label), [...prev, field]),
+          required: pairedTemplate.required ?? false,
+          placeholder: pairedTemplate.placeholder ?? "",
+          helpText: pairedTemplate.helpText ?? "",
+          options: pairedTemplate.options ?? [],
+          width: pairedTemplate.width ?? defaultWidth(pairedTemplate.type),
+        };
+        next.splice(at, 0, field, pairedField);
+      } else {
+        next.splice(at, 0, field);
+      }
+
       setSelectedId(field.id);
       return next;
     });
@@ -176,7 +254,36 @@ export function useFormBuilder() {
   }, []);
 
   const removeField = useCallback((id) => {
-    setFields((prev) => prev.filter((f) => f.id !== id));
+    setFields((prev) => {
+      const removed = prev.find((f) => f.id === id);
+      const next = prev.filter((f) => f.id !== id);
+
+      // Deleting Last Name out of a Name pair leaves First Name asking half a
+      // question — fold it back into the single "Full Name" field it started
+      // as instead of stranding a lonely "First Name" input.
+      if (removed?.pairId && removed.pairRole === "last") {
+        const sibling = next.find((f) => f.pairId === removed.pairId && f.pairRole === "first");
+        if (sibling) {
+          const mergedLabel = sibling.mergedLabel || "Full Name";
+          return next.map((f) =>
+            f.id === sibling.id
+              ? {
+                  ...f,
+                  label: mergedLabel,
+                  placeholder: f.mergedPlaceholder ?? f.placeholder,
+                  name: f.nameLockedByUser ? f.name : uniqueName(toFieldName(mergedLabel), next, f.id),
+                  pairId: undefined,
+                  // Not undefined: marks a deliberate fold so upgradeLegacyFields
+                  // doesn't split it back into First + Last on the next load.
+                  pairRole: "merged",
+                }
+              : f
+          );
+        }
+      }
+
+      return next;
+    });
     setSelectedId((current) => (current === id ? null : current));
   }, []);
 
@@ -191,6 +298,11 @@ export function useFormBuilder() {
         id: nextId(),
         name: isDisplayOnly(source.type) ? "" : uniqueName(source.name, prev),
         children: source.children?.map((c) => ({ ...deepClone(c), id: nextId() })),
+        // A duplicate is a standalone field, not the other half of the
+        // original's Name pair — leaving pairId set would make removeField
+        // match it against the wrong sibling.
+        pairId: undefined,
+        pairRole: undefined,
       };
       const next = [...prev];
       next.splice(index + 1, 0, copy);
@@ -313,6 +425,8 @@ export function useFormBuilder() {
         otherLabel: f.otherLabel ?? null,
         bodyText: f.bodyText ?? null,
         acknowledgementText: f.acknowledgementText ?? null,
+        pairId: f.pairId ?? null,
+        pairRole: f.pairRole ?? null,
         children:
           f.children?.map((c) => ({
             name: c.name,
@@ -337,7 +451,7 @@ export function useFormBuilder() {
     setDescription("");
     setRequiresPayment(false);
     setPrice("");
-    setFields(DEFAULT_FORM_BLOCKS.reduce((acc, key) => [...acc, createField(key, acc)], []));
+    setFields(buildDefaultFields(DEFAULT_FORM_BLOCKS));
     setSelectedId(null);
   }, []);
 

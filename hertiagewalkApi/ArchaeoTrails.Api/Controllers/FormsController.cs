@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using ArchaeoTrails.Application.Features.Forms;
 using ArchaeoTrails.Application.Interfaces;
+using ArchaeoTrails.Application.Services;
 using ArchaeoTrails.Domain.Constants;
 using ArchaeoTrails.Domain.Entities;
 using ArchaeoTrails.Domain.Enums;
@@ -159,6 +160,18 @@ namespace ArchaeoTrails.Api.Controllers
                 Currency = template.Currency
             };
 
+            // An experience's registration form is paid for per booking, at the
+            // experience's own prices (BookingService does the real maths).
+            var experience = await _experienceTemplateRepository.GetByLinkedFormTemplateIdAsync(template.Id);
+            if (experience is not null)
+            {
+                dto.ExperienceId = experience.Id;
+                dto.RequiresPayment = experience.RequiresPayment;
+                dto.Price = experience.Price;
+                dto.PrivatePrice = experience.PrivatePrice;
+                dto.Currency = experience.Currency;
+            }
+
             return Ok(dto);
         }
 
@@ -190,7 +203,20 @@ namespace ArchaeoTrails.Api.Controllers
 
             // Price is authoritative from the server-stored FormTemplate — never
             // accept an amount from the client here.
-            var orderId = await _paymentService.CreateOrderAsync(template.Price, template.Currency);
+            string orderId;
+            try
+            {
+                orderId = await _paymentService.CreateOrderAsync(template.Price, template.Currency);
+            }
+            catch (InvalidOperationException)
+            {
+                // Keys missing (REPLACE_ME) or Razorpay rejected the call.
+                return StatusCode(503, new
+                {
+                    status = "error",
+                    message = "Online payment is not available right now. Please try again later."
+                });
+            }
 
             return Ok(new CreateOrderResponse
             {
@@ -211,7 +237,7 @@ namespace ArchaeoTrails.Api.Controllers
             // Required fields are enforced here as well as in the browser — on a
             // free form there is no payment step standing between a scripted
             // POST and a saved row.
-            var missing = FindMissingRequiredFields(template, request.FormData);
+            var missing = BookingRules.FindMissingRequiredFields(ParseFields(template), request.FormData);
             if (missing.Count > 0)
             {
                 return BadRequest(new SubmitFormResponse
@@ -264,8 +290,10 @@ namespace ArchaeoTrails.Api.Controllers
                 // A free form never records money, whatever the client sent.
                 AmountPaid = template.RequiresPayment ? template.Price : 0m,
                 Currency = template.Currency,
-                RazorpayOrderId = template.RequiresPayment ? request.RazorpayOrderId : string.Empty,
-                RazorpayPaymentId = template.RequiresPayment ? request.RazorpayPaymentId : null,
+                PaymentGateway = template.RequiresPayment ? "Razorpay" : null,
+                GatewayOrderId = template.RequiresPayment ? request.RazorpayOrderId : string.Empty,
+                GatewayPaymentId = template.RequiresPayment ? request.RazorpayPaymentId : null,
+                PaidAt = template.RequiresPayment ? DateTime.UtcNow : null,
                 Status = template.RequiresPayment ? SubmissionStatus.Paid : SubmissionStatus.Submitted
             };
 
@@ -341,7 +369,7 @@ namespace ArchaeoTrails.Api.Controllers
             }
 
             var booked = await _formSubmissionRepository.GetBookedSlotsAsync(formTemplateId);
-            var available = ExperiencesController.AvailablePrivateSlots(experience.PrivateSlotsJson, booked);
+            var available = BookingRules.AvailablePrivateSlots(experience.PrivateSlotsJson, booked);
             if (!available.Any(d => d.Date == parsed.Date))
             {
                 return (null, "Sorry, that date is no longer available. Please choose another.");
@@ -349,16 +377,21 @@ namespace ArchaeoTrails.Api.Controllers
             return (parsed.Date, null);
         }
 
-        // GET /api/forms  (Admin/Employee only) — every template incl. inactive.
+        // GET /api/forms  (Admin/Employee only) — every template incl. inactive,
+        // except experience registration forms: those are built and managed
+        // inside the Experience Builder, so they don't show as separate forms.
         [HttpGet]
         [Authorize(Roles = Roles.StaffPolicy)]
         public async Task<IActionResult> ListForms()
         {
             var templates = await _formTemplateRepository.GetAllAsync();
+            var experienceFormIds = await _experienceTemplateRepository.GetLinkedFormTemplateIdsAsync();
             var result = new List<AdminFormListItemDto>(templates.Count);
 
             foreach (var template in templates)
             {
+                if (experienceFormIds.Contains(template.Id)) continue;
+
                 var submissions = await _formSubmissionRepository.GetByTemplateIdAsync(template.Id);
                 result.Add(new AdminFormListItemDto
                 {
@@ -417,52 +450,6 @@ namespace ArchaeoTrails.Api.Controllers
 
         private static List<FormFieldDefinition> ParseFields(FormTemplate template) =>
             JsonSerializer.Deserialize<List<FormFieldDefinition>>(template.FieldsJson) ?? new();
-
-        /// <summary>
-        /// Labels of the required, answer-collecting fields the submitter left blank.
-        /// Display-only blocks (heading/paragraph/divider) collect nothing, so they
-        /// are never required.
-        ///
-        /// A "group" block holds no answer of its own — its sub-fields do, under
-        /// dotted keys ("address.pincode") — so it is checked by descending into
-        /// its children rather than by looking for its own name.
-        /// </summary>
-        private static List<string> FindMissingRequiredFields(
-            FormTemplate template, Dictionary<string, string> formData)
-        {
-            var missing = new List<string>();
-
-            foreach (var field in ParseFields(template))
-            {
-                if (IsDisplayOnly(field.Type)) continue;
-
-                if (field.Type == "group")
-                {
-                    foreach (var child in field.Children ?? new List<FormFieldDefinition>())
-                    {
-                        if (!child.Required) continue;
-                        CheckOne(child, $"{field.Name}.{child.Name}", $"{field.Label} — {child.Label}");
-                    }
-                    continue;
-                }
-
-                if (!field.Required) continue;
-                CheckOne(field, field.Name, field.Label);
-            }
-
-            return missing;
-
-            void CheckOne(FormFieldDefinition field, string key, string label)
-            {
-                if (!formData.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
-                {
-                    missing.Add(string.IsNullOrWhiteSpace(label) ? key : label);
-                }
-            }
-        }
-
-        private static bool IsDisplayOnly(string type) =>
-            type is "heading" or "paragraph" or "divider";
 
         private static string Slugify(string title) =>
             new string(title.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray())

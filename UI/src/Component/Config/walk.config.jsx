@@ -24,6 +24,8 @@ export const walkConfig = {
     sectionSubtitle: "Select a trail below to uncover the stories of the past.",
     
     currencySymbol: "₹",
+    freeLabel: "Free",
+    defaultLocation: "Tamil Nadu",
     viewButton: "View Details",
     confirmButton: "Confirm Booking",
     

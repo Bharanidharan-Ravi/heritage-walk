@@ -94,6 +94,17 @@ namespace ArchaeoTrails.Application.Features.Forms
         /// FormSubmission.DataJson stays a flat string map.
         /// </summary>
         public List<FormFieldDefinition>? Children { get; set; }
+
+        /// <summary>
+        /// Shared by both halves of a block dropped as a pair — currently just
+        /// the Name block's First Name + Last Name. Lets the frontend find the
+        /// partner field (to join them into one submitter name, or fold First
+        /// Name back into "Full Name" if Last Name is deleted).
+        /// </summary>
+        public string? PairId { get; set; }
+
+        /// <summary>Which half of the pair this is: "first" | "last".</summary>
+        public string? PairRole { get; set; }
     }
 
     /// <summary>
@@ -137,6 +148,16 @@ namespace ArchaeoTrails.Application.Features.Forms
         public bool RequiresPayment { get; set; }
         public decimal Price { get; set; }
         public string Currency { get; set; } = "INR";
+
+        /// <summary>
+        /// Set when this is an experience's registration form — paid ones then
+        /// go through POST /api/bookings (Cashfree), and the prices above are
+        /// the experience's per-person prices.
+        /// </summary>
+        public Guid? ExperienceId { get; set; }
+
+        /// <summary>Per-person Private price; null = same as Price.</summary>
+        public decimal? PrivatePrice { get; set; }
     }
 
     // ---- Payment order ----------------------------------------------------------

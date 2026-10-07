@@ -4,6 +4,8 @@
 // base URL from VITE_API_URL, same env var Contact.jsx already uses — never
 // hardcode the API host.
 
+import { SITE_ENV_HEADERS } from "../../testMode";
+
 const API_BASE = import.meta.env.VITE_API_URL;
 const TOKEN_STORAGE_KEY = "archaeotrails_admin_token";
 
@@ -25,7 +27,7 @@ export function setStoredToken(token) {
 }
 
 async function request(path, { method = "GET", body, token } = {}) {
-  const headers = { "Content-Type": "application/json" };
+  const headers = { "Content-Type": "application/json", ...SITE_ENV_HEADERS };
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const response = await fetch(`${API_BASE}${path}`, {
@@ -57,7 +59,7 @@ async function request(path, { method = "GET", body, token } = {}) {
 // body; the browser sets its own multipart boundary once `body` is a
 // FormData instance.
 async function uploadFile(path, token, file) {
-  const headers = {};
+  const headers = { ...SITE_ENV_HEADERS };
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const formData = new FormData();
@@ -145,6 +147,9 @@ export const adminApi = {
     request(`/api/experiences/${id}/publish`, { method: "POST", token }),
   closeExperience: (token, id) =>
     request(`/api/experiences/${id}/close`, { method: "POST", token }),
+  // New Draft copy (and a copy of its registration form) — returns { id }.
+  cloneExperience: (token, id, title) =>
+    request(`/api/experiences/${id}/clone`, { method: "POST", body: { title }, token }),
   retryExperienceSync: (token, id) =>
     request(`/api/experiences/${id}/sync-retry`, { method: "POST", token }),
   // Hero/gallery images: the file is uploaded straight to Sanity's asset

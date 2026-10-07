@@ -10,6 +10,9 @@ namespace ArchaeoTrails.Domain.Enums
         Failed = 2,
 
         /// <summary>A completed submission on a form with RequiresPayment == false.</summary>
-        Submitted = 3
+        Submitted = 3,
+
+        /// <summary>A PendingPayment booking whose hold ran out (ExpiresAt) before it was paid.</summary>
+        Expired = 4
     }
 }

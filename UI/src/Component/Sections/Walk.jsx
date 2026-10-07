@@ -1,11 +1,50 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom"; // <-- 1. Import useNavigate
-import { client, urlFor } from "/src/sanityClient"; 
+import { client, urlFor } from "/src/sanityClient";
 import { walkConfig } from "../Config/walk.config";
+import { SITE_ENV_HEADERS } from "../../testMode";
+
+const API_BASE = import.meta.env.VITE_API_URL;
+
+// Cards come from two sources, normalized to one shape:
+//  - Sanity "walk" documents (dataset follows /test — see testMode.js)
+//  - Live Walk experiences from the Experience Builder (the API returns only
+//    Published + not-yet-ended ones, and only /test's own under /test)
+function stripHtml(html) {
+  return (html || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function fromSanityWalk(walk) {
+  return {
+    key: walk._id,
+    href: walk.slug ? `/walks/${walk.slug}` : null,
+    title: walk.title,
+    description: walk.description,
+    location: walk.location,
+    date: walk.date,
+    imageUrl: walk.mainImage ? urlFor(walk.mainImage).width(600).height(400).url() : null,
+    priceLabel: walk.price,
+  };
+}
+
+function fromExperience(exp) {
+  const block = (key) => exp.contentBlocks?.find((b) => b.blockKey === key)?.value;
+  return {
+    key: `exp-${exp.id}`,
+    href: `/experiences/${exp.id}`,
+    title: exp.title,
+    description: stripHtml(block("shortDescription")),
+    location: block("location"),
+    date: exp.startDate,
+    imageUrl: block("heroImage") || null,
+    priceLabel: exp.requiresPayment ? exp.price : null,
+    free: !exp.requiresPayment,
+  };
+}
 
 export default function Walks() {
   const [walks, setWalks] = useState([]);
-  const [contactInfo, setContactInfo] = useState(null); 
+  const [contactInfo, setContactInfo] = useState(null);
   const navigate = useNavigate(); // <-- 2. Initialize navigate
 
   const { theme, content } = walkConfig;
@@ -13,17 +52,30 @@ export default function Walks() {
   useEffect(() => {
     // 3. Ensure we are fetching the slug!
     const query = `{
-      "walks": *[_type == "walk"] | order(date asc) { 
-        ..., 
-        "slug": slug.current 
+      "walks": *[_type == "walk"] | order(date asc) {
+        ...,
+        "slug": slug.current
       },
       "settings": *[_type == "contact"][0]
     }`;
 
-    client.fetch(query).then((data) => {
-        setWalks(data.walks);
-        setContactInfo(data.settings);
-      }).catch(console.error);
+    const sanityWalks = client.fetch(query).then((data) => {
+      setContactInfo(data.settings);
+      return (data.walks || []).map(fromSanityWalk);
+    }).catch((err) => { console.error(err); return []; });
+
+    const liveExperiences = fetch(`${API_BASE}/api/experiences/public?type=walk&pageSize=100`, { headers: SITE_ENV_HEADERS })
+      .then((res) => (res.ok ? res.json() : { items: [] }))
+      .then((data) => (data.items || []).map(fromExperience))
+      .catch((err) => { console.error(err); return []; });
+
+    Promise.all([sanityWalks, liveExperiences]).then(([a, b]) => {
+      const all = [...a, ...b];
+      // Undated walks ("TBA") go last.
+      const time = (w) => (w.date ? new Date(w.date).getTime() : Number.MAX_SAFE_INTEGER);
+      all.sort((x, y) => time(x) - time(y));
+      setWalks(all);
+    });
   }, []);
 
   const getDateParts = (dateString) => {
@@ -35,13 +87,13 @@ export default function Walks() {
   };
 
   // 4. New navigation function
-  const handleWalkClick = (slug) => {
-    if (slug) {
-      navigate(`/walks/${slug}`);
+  const handleWalkClick = (href) => {
+    if (href) {
+      navigate(href);
       // Scroll to top when navigating to the new page
       window.scrollTo(0, 0); 
     } else {
-      console.error("No slug found for this walk!");
+      console.error("No link found for this walk!");
     }
   };
 
@@ -75,7 +127,7 @@ export default function Walks() {
 
             return (
               <div 
-                key={walk._id} 
+                key={walk.key} 
                 className="group rounded-[2rem] overflow-hidden shadow-lg hover:-translate-y-2 transition-all duration-500 flex flex-col h-full"
                 style={{ backgroundColor: theme.cardBackground }}
               >
@@ -83,11 +135,11 @@ export default function Walks() {
                 {/* Image Area - Updated onClick */}
                 <div 
                   className="h-72 overflow-hidden relative cursor-pointer" 
-                  onClick={() => handleWalkClick(walk.slug)}
+                  onClick={() => handleWalkClick(walk.href)}
                 >
-                  {walk.mainImage ? (
+                  {walk.imageUrl ? (
                     <img 
-                      src={urlFor(walk.mainImage).width(600).height(400).url()} 
+                      src={walk.imageUrl}
                       alt={walk.title}
                       className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                     />
@@ -109,13 +161,13 @@ export default function Walks() {
                   {/* Location Tag */}
                   <div className="absolute -top-4 right-8 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-md"
                        style={{ backgroundColor: theme.accentColor, color: theme.sectionBackground }}>
-                     {walk.location || 'Tamil Nadu'}
+                     {walk.location || content.defaultLocation}
                   </div>
 
                   {/* Title - Updated onClick */}
                   <h3 className="text-3xl font-serif font-medium mb-4 leading-tight cursor-pointer transition-colors group-hover:opacity-70 mt-2" 
                       style={{ color: theme.cardTextColor }}
-                      onClick={() => handleWalkClick(walk.slug)}>
+                      onClick={() => handleWalkClick(walk.href)}>
                     {walk.title}
                   </h3>
                   
@@ -127,12 +179,12 @@ export default function Walks() {
                   <div className="mt-auto flex items-center justify-between pt-6 border-t border-gray-200">
                     <div>
                       <span className="text-xs uppercase tracking-wider block opacity-50" style={{ color: theme.cardSecondaryText }}>Price</span>
-                      <span className="text-xl font-bold" style={{ color: theme.cardTextColor }}>{content.currencySymbol}{walk.price}</span>
+                      <span className="text-xl font-bold" style={{ color: theme.cardTextColor }}>{walk.free ? content.freeLabel : `${content.currencySymbol}${walk.priceLabel}`}</span>
                     </div>
                     
                     {/* Button - Updated onClick */}
                     <button 
-                      onClick={() => handleWalkClick(walk.slug)}
+                      onClick={() => handleWalkClick(walk.href)}
                       className="w-12 h-12 rounded-full flex items-center justify-center transition-transform hover:scale-110 shadow-lg text-white"
                       style={{ backgroundColor: theme.sectionBackground }}
                     >
@@ -241,16 +293,16 @@ export default function Walks() {
 //             return (
 //               // Standard Card Layout
 //               <div 
-//                 key={walk._id} 
+//                 key={walk.key} 
 //                 className="group rounded-[2rem] overflow-hidden shadow-lg hover:-translate-y-2 transition-all duration-500 flex flex-col h-full"
 //                 style={{ backgroundColor: theme.cardBackground }}
 //               >
                 
 //                 {/* Image Area */}
 //                 <div className="h-72 overflow-hidden relative cursor-pointer" onClick={() => openWalkModal(walk)}>
-//                   {walk.mainImage ? (
+//                   {walk.imageUrl ? (
 //                     <img 
-//                       src={urlFor(walk.mainImage).width(600).height(400).url()} 
+//                       src={walk.imageUrl}
 //                       alt={walk.title}
 //                       className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
 //                     />
@@ -272,7 +324,7 @@ export default function Walks() {
 //                   {/* Location Tag */}
 //                   <div className="absolute -top-4 right-8 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-md"
 //                        style={{ backgroundColor: theme.accentColor, color: theme.sectionBackground }}>
-//                      {walk.location || 'Tamil Nadu'}
+//                      {walk.location || content.defaultLocation}
 //                   </div>
 
 //                   <h3 className="text-3xl font-serif font-medium mb-4 leading-tight cursor-pointer transition-colors group-hover:opacity-70 mt-2" 
@@ -289,7 +341,7 @@ export default function Walks() {
 //                   <div className="mt-auto flex items-center justify-between pt-6 border-t border-gray-200">
 //                     <div>
 //                       <span className="text-xs uppercase tracking-wider block opacity-50" style={{ color: theme.cardSecondaryText }}>Price</span>
-//                       <span className="text-xl font-bold" style={{ color: theme.cardTextColor }}>{content.currencySymbol}{walk.price}</span>
+//                       <span className="text-xl font-bold" style={{ color: theme.cardTextColor }}>{walk.free ? content.freeLabel : `${content.currencySymbol}${walk.priceLabel}`}</span>
 //                     </div>
                     
 //                     <button 

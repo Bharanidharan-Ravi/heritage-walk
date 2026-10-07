@@ -29,6 +29,22 @@ export const experiencePublicConfig = {
     glassBackground: "rgba(255, 255, 255, 0.5)",
     glassBorder: "rgba(255, 255, 255, 0.7)",
     glassInsetBackground: "rgba(255, 255, 255, 0.35)",
+
+    // Solid "surface" cards — the current look of the experience page, the
+    // booking card and the registration form. White on cream with a hairline
+    // border and a soft, low shadow reads cleaner than the glass above.
+    surfaceBackground: "#ffffff",
+    surfaceBorder: "rgba(11, 23, 32, 0.07)",
+    surfaceShadow: "0 1px 2px rgba(11, 23, 32, 0.04), 0 8px 24px -16px rgba(11, 23, 32, 0.12)",
+    insetBackground: "#f8f5ef",
+    // Darker gold for small text/icons, where #caa863 is too faint on white.
+    accentStrong: "#a07c35",
+    accentSoft: "rgba(202, 168, 99, 0.14)",
+    // Primary action (Book Now / Pay Now): deep ink with a gold hover.
+    primaryButtonBackground: "#0b1720",
+    primaryButtonText: "#f6f2ea",
+    primaryButtonHover: "#1c2b38",
+    successColor: "#2f7d57",
   },
 
   content: {
@@ -84,6 +100,11 @@ export const experiencePublicConfig = {
     bookingClosedLabel: "Bookings Closed",
     bookingComingSoonLabel: "Bookings Opening Soon",
     bookingHint: "You'll review your details and pay securely on the next step.",
+    // Small reassurance row under the booking card's button.
+    trustPoints: ["Secure payment", "Instant confirmation"],
+    availabilityLabel: "Availability",
+    totalBreakdown: (currency, price, qty) => `${currency} ${price} × ${qty} ${qty === 1 ? "guest" : "guests"}`,
+    atAGlanceLabels: { difficulty: "Difficulty", distance: "Distance", duration: "Duration", courseDuration: "Duration", instructorName: "Guide" },
 
     mapCardTitle: "Location Details",
     startingPointLabel: "Starting point",
@@ -109,10 +130,29 @@ export const experiencePublicConfig = {
     cartOwnedFieldKeys: ["registrationType"],
     registrationHeading: "Your details",
     registrationTitleFallback: "Untitled experience",
-    registrationBackLabel: "← Back to page",
+    // Last breadcrumb crumb on the registration screen; the experience title
+    // before it links back to the page.
+    breadcrumbRegistration: "Registration",
     registrationEmptyNote: "No fields added yet — build the registration form first.",
     registrationPreviewNote: "Preview only — nothing is submitted.",
     registrationSummaryLabel: "Registration",
+    registrationSubheading: "We'll send your booking confirmation to this email.",
+    // Three-step progress strip above the registration form.
+    registrationSteps: ["Choose", "Your details", "Payment"],
+    registrationActiveStep: 1,
+
+    // Extra name rows added to the registration form for everyone after the
+    // person filling it in — driven by the cart's registration type + "Number
+    // of people" (see withAttendeeNameFields in Sections/experienceBlockHelpers.js).
+    attendeeNames: {
+      forRegistrationTypes: ["Group"],
+      heading: "Other attendees",
+      firstNameLabel: (n) => `Attendee ${n} — First Name`,
+      lastNameLabel: (n) => `Attendee ${n} — Last Name`,
+      firstNamePlaceholder: "First name",
+      lastNamePlaceholder: "Last name",
+      builderNote: "Group bookings: one First + Last Name row is added automatically for each extra person picked in the cart's “Number of people”.",
+    },
 
     // Listing page (ExperienceList.jsx)
     listTitle: "Our Experiences",

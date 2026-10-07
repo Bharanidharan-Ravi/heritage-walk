@@ -1,4 +1,5 @@
-﻿using ArchaeoTrails.Application.Features.Contact;
+﻿using ArchaeoTrails.Application.Features.Bookings;
+using ArchaeoTrails.Application.Features.Contact;
 using ArchaeoTrails.Application.Interfaces;
 using ArchaeoTrails.Domain.Entities;
 using Microsoft.Extensions.Configuration;
@@ -97,6 +98,104 @@ namespace ArchaeoTrails.Infrastructure.Services
             {
                 // TODO(form-generator): log instead of swallowing — a failed
                 // owner notification after a successful payment must not be silent.
+                return false;
+            }
+        }
+
+        public async Task<bool> SendBookingConfirmationEmailAsync(BookingConfirmationEmail booking)
+        {
+            if (string.IsNullOrWhiteSpace(booking.SubmitterEmail))
+            {
+                return false;
+            }
+
+            var firstName = booking.SubmitterName?.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            var html = new StringBuilder()
+                .Append("<div style=\"font-family:Georgia,serif;max-width:560px;margin:auto;color:#1F2933\">")
+                .Append("<h2 style=\"color:#8A6A35;margin-bottom:4px\">Booking Confirmed</h2>")
+                .Append($"<p>Hi {Html(firstName ?? "there")},</p>")
+                .Append($"<p>Thank you for booking with Archaeo Trails — your payment was received and your spot is confirmed.</p>")
+                .Append("<p style=\"font-size:13px;color:#6B7280;margin:20px 0 4px\">YOUR BOOKING ID</p>")
+                .Append($"<p style=\"font-size:26px;font-family:monospace;font-weight:bold;color:#8A6A35;margin:0 0 16px\">{Html(booking.BookingRef)}</p>")
+                .Append(BookingTable(booking))
+                .Append("<p>Please keep this booking ID handy — show it on the day of the walk.</p>");
+            if (!string.IsNullOrWhiteSpace(booking.BookingUrl))
+            {
+                html.Append($"<p><a href=\"{Html(booking.BookingUrl)}\" style=\"color:#8A6A35\">View your booking</a></p>");
+            }
+            html.Append($"<p>— {Html(_configuration["EmailSettings:SenderName"])}</p></div>");
+
+            return await SendHtmlAsync(booking.SubmitterEmail, $"Booking confirmed: {booking.ExperienceTitle} ({booking.BookingRef})", html.ToString());
+        }
+
+        public async Task<bool> SendBookingOwnerEmailAsync(BookingConfirmationEmail booking)
+        {
+            var html = new StringBuilder()
+                .Append("<div style=\"font-family:Arial,sans-serif;max-width:640px\">")
+                .Append($"<h3>New paid booking {Html(booking.BookingRef)}</h3>")
+                .Append(BookingTable(booking))
+                .Append("<table cellpadding=\"4\" style=\"border-collapse:collapse;font-size:14px;margin-top:12px\">")
+                .Append(Row("Name", booking.SubmitterName))
+                .Append(Row("Email", booking.SubmitterEmail))
+                .Append(Row("Phone", booking.SubmitterPhone))
+                .Append("</table>");
+            if (!string.IsNullOrWhiteSpace(booking.DataJson))
+            {
+                html.Append($"<p style=\"font-size:12px;color:#6B7280\">Form answers: {Html(booking.DataJson)}</p>");
+            }
+            html.Append("</div>");
+
+            return await SendHtmlAsync(_configuration["EmailSettings:SenderEmail"]!,
+                $"New booking {booking.BookingRef}: {booking.ExperienceTitle} × {booking.Quantity}", html.ToString(),
+                replyTo: booking.SubmitterEmail);
+        }
+
+        private static string BookingTable(BookingConfirmationEmail b) =>
+            "<table cellpadding=\"6\" style=\"border-collapse:collapse;font-size:15px;width:100%\">" +
+            Row("Experience", b.ExperienceTitle) +
+            (b.ExperienceDate.HasValue ? Row("Date", b.ExperienceDate.Value.ToString("dddd, d MMMM yyyy")) : "") +
+            Row("Booking type", b.RegistrationType) +
+            Row("Guests", b.Quantity.ToString()) +
+            Row("Amount paid", $"{b.Currency} {b.Amount:0.##}") +
+            "</table>";
+
+        private static string Row(string label, string? value) =>
+            string.IsNullOrWhiteSpace(value) ? "" :
+            $"<tr><td style=\"color:#6B7280;border-bottom:1px solid #E5E7EB\">{label}</td>" +
+            $"<td style=\"border-bottom:1px solid #E5E7EB\"><b>{Html(value)}</b></td></tr>";
+
+        private static string Html(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
+
+        private async Task<bool> SendHtmlAsync(string to, string subject, string html, string? replyTo = null)
+        {
+            try
+            {
+                var senderEmail = _configuration["EmailSettings:SenderEmail"];
+                var senderName = _configuration["EmailSettings:SenderName"];
+                var appPassword = _configuration["EmailSettings:AppPassword"];
+                var smtpServer = _configuration["EmailSettings:SmtpServer"];
+                var smtpPort = int.Parse(_configuration["EmailSettings:SmtpPort"]!);
+
+                using var message = new MailMessage
+                {
+                    From = new MailAddress(senderEmail!, senderName),
+                    Subject = subject,
+                    Body = html,
+                    IsBodyHtml = true
+                };
+                message.To.Add(to);
+                if (!string.IsNullOrWhiteSpace(replyTo))
+                {
+                    message.ReplyToList.Add(new MailAddress(replyTo));
+                }
+
+                using var client = new SmtpClient(smtpServer, smtpPort) { EnableSsl = true };
+                client.Credentials = new NetworkCredential(senderEmail, appPassword);
+                await client.SendMailAsync(message);
+                return true;
+            }
+            catch
+            {
                 return false;
             }
         }

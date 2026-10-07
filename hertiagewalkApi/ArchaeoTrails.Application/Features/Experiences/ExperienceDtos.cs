@@ -36,6 +36,9 @@ namespace ArchaeoTrails.Application.Features.Experiences
     {
         public bool RequiresPayment { get; set; }
         public decimal Price { get; set; }
+
+        /// <summary>Per-person Private price (final, fees included); null = same as Price.</summary>
+        public decimal? PrivatePrice { get; set; }
         public string Currency { get; set; } = "INR";
 
         /// <summary>Null = unlimited capacity.</summary>
@@ -61,6 +64,12 @@ namespace ArchaeoTrails.Application.Features.Experiences
         public string Reason { get; set; } = string.Empty;
     }
 
+    public class CloneExperienceRequest
+    {
+        /// <summary>Title for the copy; blank = "&lt;original&gt; (Copy)".</summary>
+        public string? Title { get; set; }
+    }
+
     // ---- List (management page) -------------------------------------------------
 
     public class ExperienceListItemDto
@@ -72,6 +81,7 @@ namespace ArchaeoTrails.Application.Features.Experiences
 
         public bool RequiresPayment { get; set; }
         public decimal Price { get; set; }
+        public decimal? PrivatePrice { get; set; }
         public string Currency { get; set; } = "INR";
 
         /// <summary>Confirmed bookings, derived from CapacityTotal - CapacityRemaining (never a naive live COUNT).</summary>
@@ -88,6 +98,9 @@ namespace ArchaeoTrails.Application.Features.Experiences
         public List<DateTime> Slots { get; set; } = new();
         public List<DateTime> PrivateSlots { get; set; } = new();
         public int PrivateMinPeople { get; set; } = 1;
+
+        /// <summary>Carried through by SetPaymentModal (no form picker there any more) and used for the Bookings link.</summary>
+        public Guid? LinkedFormTemplateId { get; set; }
 
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
@@ -118,6 +131,7 @@ namespace ArchaeoTrails.Application.Features.Experiences
 
         public bool RequiresPayment { get; set; }
         public decimal Price { get; set; }
+        public decimal? PrivatePrice { get; set; }
         public string Currency { get; set; } = "INR";
         public int? CapacityTotal { get; set; }
         public int? CapacityRemaining { get; set; }
@@ -191,6 +205,7 @@ namespace ArchaeoTrails.Application.Features.Experiences
 
         public bool RequiresPayment { get; set; }
         public decimal Price { get; set; }
+        public decimal? PrivatePrice { get; set; }
         public string Currency { get; set; } = "INR";
         public int? CapacityTotal { get; set; }
         public int? CapacityRemaining { get; set; }

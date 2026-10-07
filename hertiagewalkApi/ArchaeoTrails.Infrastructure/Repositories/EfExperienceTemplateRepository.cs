@@ -39,10 +39,22 @@ namespace ArchaeoTrails.Infrastructure.Repositories
             await _db.SaveChangesAsync();
         }
 
+        public async Task<IReadOnlySet<Guid>> GetLinkedFormTemplateIdsAsync()
+        {
+            var ids = await _db.ExperienceTemplates.AsNoTracking()
+                .Where(e => e.LinkedFormTemplateId != null)
+                .Select(e => e.LinkedFormTemplateId!.Value)
+                .ToListAsync();
+            return ids.ToHashSet();
+        }
+
         public async Task<ExperienceListPage> QueryAsync(ExperienceListQuery query)
         {
-            var now = DateTime.UtcNow;
-            IQueryable<ExperienceTemplate> q = _db.ExperienceTemplates.AsNoTracking();
+            // EndDate is a date-only value (midnight), and the experience still
+            // runs on that day — so it only counts as ended from the next day.
+            var today = DateTime.UtcNow.Date;
+            IQueryable<ExperienceTemplate> q = _db.ExperienceTemplates.AsNoTracking()
+                .Where(e => e.IsTest == query.IsTest);
 
             q = query.Tab switch
             {
@@ -54,11 +66,11 @@ namespace ArchaeoTrails.Infrastructure.Repositories
 
                 ExperienceTab.Active => q.Where(e =>
                     e.Status == ExperienceStatus.Published &&
-                    (e.EndDate == null || e.EndDate > now)),
+                    (e.EndDate == null || e.EndDate >= today)),
 
                 ExperienceTab.Closed => q.Where(e =>
                     e.Status == ExperienceStatus.Closed ||
-                    (e.Status == ExperienceStatus.Published && e.EndDate != null && e.EndDate <= now)),
+                    (e.Status == ExperienceStatus.Published && e.EndDate != null && e.EndDate < today)),
 
                 _ => q
             };

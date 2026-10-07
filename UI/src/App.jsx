@@ -8,6 +8,7 @@ import BlogPost2 from './Component/Sections/BlogPost copy';
 import BlogList2 from './Component/Sections/BlogList copy';
 import WalkDetail from './Component/Sections/WalkDetail';
 import FormPage from './Component/Sections/FormPage'; // form-generator (dry scaffold, see docs/form-generator/MASTER_PROMPT.md)
+import BookingStatusView from './Component/Sections/BookingStatusView'; // Cashfree return page — /booking/:ref
 import ExperienceList from './Component/Sections/ExperienceList'; // public selection page for Experience Builder content
 import ExperienceDetail from './Component/Sections/ExperienceDetail'; // public detail + booking hand-off page
 import TestConsole from './Component/pages/TestConsole'; // private QA console — dev-only unless VITE_ENABLE_TEST_PAGE=true
@@ -52,6 +53,7 @@ function App() {
         <Route path="/blog/:slug" element={<BlogPost />} />
         <Route path="/blog" element={<BlogList />} />
         <Route path="/forms/:slug" element={<FormPage />} />
+        <Route path="/booking/:ref" element={<BookingStatusView />} />
            {/* <Route path="/blogs/:slug" element={<BlogPost2 />} />
         <Route path="/blogs" element={<BlogList2 />} /> */}
       </Route>

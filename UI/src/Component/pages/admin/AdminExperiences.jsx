@@ -76,7 +76,17 @@ const STATUS_BADGE = {
   Approved: { label: "APPROVED", bg: "rgba(108,193,157,0.15)", fg: "#6CC19D" },
   Published: { label: "LIVE", bg: "rgba(108,193,157,0.2)", fg: "#6CC19D" },
   Closed: { label: "CLOSED", bg: "rgba(244,241,234,0.1)", fg: "rgba(244,241,234,0.6)" },
+  // Not a stored status: Published whose EndDate has passed. The API files
+  // these under the Closed tab, so they must not read as LIVE there.
+  Ended: { label: "ENDED", bg: "rgba(244,241,234,0.1)", fg: "rgba(244,241,234,0.6)" },
 };
+
+// End date is inclusive (the experience still runs that day) — matches
+// EfExperienceTemplateRepository's Active/Closed split.
+function isEnded(row) {
+  if (row.status !== "Published" || !row.endDate) return false;
+  return row.endDate.slice(0, 10) < new Date().toISOString().slice(0, 10);
+}
 
 const EMPTY_MESSAGE = {
   pending: "No pending experiences.",
@@ -108,6 +118,7 @@ export default function AdminExperiences() {
   const [showCreate, setShowCreate] = useState(false);
   const [paymentTarget, setPaymentTarget] = useState(null);
   const [changesTarget, setChangesTarget] = useState(null);
+  const [cloneTarget, setCloneTarget] = useState(null);
   const [rowBusyId, setRowBusyId] = useState(null);
   const [actionError, setActionError] = useState("");
 
@@ -191,8 +202,23 @@ export default function AdminExperiences() {
     rowActionMutation.mutate({ id, fn, errorMessage });
   };
 
+  // Clone asks for the new name first (CloneModal), then lands on the copy's
+  // builder page so its dates can be set right away.
+  const cloneMutation = useMutation({
+    mutationFn: ({ id, title }) => adminApi.cloneExperience(token, id, title),
+    onMutate: ({ id }) => setRowBusyId(id),
+    onError: (err) => setActionError(err.message || "Failed to clone experience."),
+    onSuccess: (result) => {
+      setActionError("");
+      setCloneTarget(null);
+      invalidateExperiences();
+      navigate(`/admin/experiences/${result.id}/edit`);
+    },
+    onSettled: () => setRowBusyId(null),
+  });
+
   const closableSelected = useMemo(
-    () => items.filter((it) => selected.has(it.id) && isAdmin && it.status === "Published"),
+    () => items.filter((it) => selected.has(it.id) && isAdmin && it.status === "Published" && !isEnded(it)),
     [items, selected, isAdmin]
   );
 
@@ -332,7 +358,10 @@ export default function AdminExperiences() {
                   isAdmin={isAdmin}
                   userId={user?.id}
                   busy={rowBusyId === row.id}
-                  onView={() => navigate(`/admin/experiences/${row.id}/edit`)}
+                  onView={() => navigate(row.status === "Published" ? `/experiences/${row.id}` : `/admin/experiences/${row.id}/edit`)}
+                  onEdit={() => navigate(`/admin/experiences/${row.id}/edit`)}
+                  onClone={() => setCloneTarget(row)}
+                  onBookings={() => navigate(`/admin/forms/${row.linkedFormTemplateId}/submissions`)}
                   onSubmit={() => runRowAction(row.id, () => adminApi.submitExperience(token, row.id), "Failed to submit for approval.")}
                   onApprove={() => runRowAction(row.id, () => adminApi.approveExperience(token, row.id), "Failed to approve experience.")}
                   onRequestChanges={() => setChangesTarget(row)}
@@ -387,28 +416,45 @@ export default function AdminExperiences() {
           onSaved={async () => { setChangesTarget(null); invalidateExperiences(); }}
         />
       )}
+      {cloneTarget && (
+        <CloneModal
+          row={cloneTarget}
+          saving={cloneMutation.isPending}
+          error={cloneMutation.error?.message}
+          onClose={() => { setCloneTarget(null); cloneMutation.reset(); }}
+          onSave={(title) => cloneMutation.mutate({ id: cloneTarget.id, title })}
+        />
+      )}
     </div>
   );
 }
 
 function ExperienceRow({
   row, serial, selected, onToggle, isAdmin, userId, busy,
-  onView, onSubmit, onApprove, onRequestChanges, onSetPayment, onPublish, onClose,
+  onView, onEdit, onClone, onBookings, onSubmit, onApprove, onRequestChanges, onSetPayment, onPublish, onClose,
 }) {
   const { theme } = adminConfig;
   const { control, table } = adminUi;
-  const badge = STATUS_BADGE[row.status] || { label: row.status, bg: "rgba(244,241,234,0.1)", fg: theme.textColor };
+  const ended = isEnded(row);
+  const badge = STATUS_BADGE[ended ? "Ended" : row.status] || { label: row.status, bg: "rgba(244,241,234,0.1)", fg: theme.textColor };
   const isOwner = row.createdByUserId === userId;
+  // Mirrors ExperiencesController.Update: Admins can edit any status, owners
+  // only their own Draft / Changes Requested rows.
+  const canEdit = isAdmin || (isOwner && (row.status === "Draft" || row.status === "ChangesRequested"));
 
   const actions = [];
+  // View = the public page once Published, otherwise the (read-mostly) builder.
   actions.push({ key: "view", label: "View", onClick: onView });
+  if (canEdit) actions.push({ key: "edit", label: "Edit", onClick: onEdit });
+  actions.push({ key: "clone", label: "Clone", onClick: onClone });
+  // Registration forms no longer appear on the Forms page, so their
+  // submissions are reached from the experience itself.
+  if (row.linkedFormTemplateId) actions.push({ key: "bookings", label: "Bookings", onClick: onBookings });
 
   if (row.status === "Draft" || row.status === "ChangesRequested") {
-    if (isAdmin || isOwner) actions.push({ key: "edit", label: "Edit", onClick: onView });
     if (isAdmin || isOwner) actions.push({ key: "submit", label: row.status === "ChangesRequested" ? "Resubmit" : "Submit", onClick: onSubmit });
   }
   if (row.status === "AwaitingApproval" && isAdmin) {
-    actions.push({ key: "edit", label: "Edit", onClick: onView });
     actions.push({ key: "approve", label: "Approve", onClick: onApprove });
     actions.push({ key: "requestChanges", label: "Request Changes", onClick: onRequestChanges });
   }
@@ -416,7 +462,7 @@ function ExperienceRow({
     actions.push({ key: "setPayment", label: "Set Payment", onClick: onSetPayment });
     actions.push({ key: "publish", label: "Publish", onClick: onPublish });
   }
-  if (row.status === "Published" && isAdmin) {
+  if (row.status === "Published" && !ended && isAdmin) {
     actions.push({ key: "close", label: "Close", onClick: onClose });
   }
 
@@ -430,7 +476,7 @@ function ExperienceRow({
           {row.type?.toUpperCase()}
         </span>
       </td>
-      <td className={table.td}>{row.requiresPayment ? `${row.currency} ${row.price}` : <span className="opacity-50">Free</span>}</td>
+      <td className={table.td}>{formatPayment(row)}</td>
       <td className={table.td}>{formatBooking(row)}</td>
       <td className={table.td}>{formatDate(row.startDate)}</td>
       <td className={table.td}>{formatDate(row.endDate)}</td>
@@ -468,47 +514,70 @@ function formatDate(value, withTime = false) {
     : d.toLocaleDateString(undefined, { dateStyle: "medium" });
 }
 
+function formatPayment(row) {
+  if (!row.requiresPayment) return <span className="opacity-50">Free</span>;
+  const type = normalizeRegistrationType(row.registrationType);
+  const privatePrice = row.privatePrice ?? row.price;
+  if (type === "Private") return `Private ${row.currency} ${privatePrice}`;
+  if (type === "Both") {
+    return (
+      <span className="flex flex-col">
+        <span>Public {row.currency} {row.price}</span>
+        <span>Private {row.currency} {privatePrice}</span>
+      </span>
+    );
+  }
+  return `${row.currency} ${row.price}`;
+}
+
+function normalizeRegistrationType(value) {
+  return !value || value === "Individual" ? "Group" : value;
+}
+
 function formatBooking(row) {
   if (!row.bookingEnabled) return <span className="opacity-50">Closed</span>;
   return `${row.bookingConfirmed} / ${row.capacityTotal ?? "Unlimited"}`;
 }
 
-/** Admin-only: price/currency/capacity/linked registration form. */
+/** Admin-only: price(s)/currency/capacity. One price per registration
+ *  option on offer — Public (Group) and/or Private. */
 function SetPaymentModal({ row, token, onClose, onSaved }) {
   const { theme } = adminConfig;
   const { text, control } = adminUi;
 
   const [requiresPayment, setRequiresPayment] = useState(row.requiresPayment);
   const [price, setPrice] = useState(row.price || "");
+  const [privatePrice, setPrivatePrice] = useState(row.privatePrice ?? "");
   const [currency, setCurrency] = useState(row.currency || "INR");
   const [capacityTotal, setCapacityTotal] = useState(row.capacityTotal ?? "");
-  const [forms, setForms] = useState([]);
-  const [linkedFormTemplateId, setLinkedFormTemplateId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // Not edited here — the Experience Builder's own cart widget owns
-  // registration type/slots now (Admin-only) — but this modal still PUTs the
-  // whole payment request, so these have to be carried through untouched or
-  // a price-only save from here would silently reset them.
-  const registrationType = !row.registrationType || row.registrationType === "Individual" ? "Group" : row.registrationType;
+  // Not edited here — the Experience Builder owns registration type/slots
+  // and the registration form (built on the same page) — but this modal
+  // still PUTs the whole payment request, so these have to be carried
+  // through untouched or a price-only save from here would reset them.
+  const registrationType = normalizeRegistrationType(row.registrationType);
+  const offersGroup = registrationType !== "Private";
+  const offersPrivate = registrationType !== "Group";
   const privateSlots = row.privateSlots || [];
   const privateMinPeople = row.privateMinPeople || 1;
-
-  useEffect(() => {
-    adminApi.listForms(token).then(setForms).catch(() => {});
-  }, [token]);
 
   const save = async () => {
     setSaving(true);
     setError("");
     try {
+      // Private-only has no Public price of its own: the API still requires
+      // Price > 0 for a paid experience, so it mirrors the Private price.
+      const privateAmount = Number(privatePrice) || 0;
+      const groupAmount = offersGroup ? Number(price) || 0 : privateAmount;
       await adminApi.setExperiencePayment(token, row.id, {
         requiresPayment,
-        price: requiresPayment ? Number(price) || 0 : 0,
+        price: requiresPayment ? groupAmount : 0,
+        privatePrice: requiresPayment && offersPrivate ? privateAmount || null : null,
         currency,
         capacityTotal: capacityTotal === "" ? null : Number(capacityTotal),
-        linkedFormTemplateId: linkedFormTemplateId || null,
+        linkedFormTemplateId: row.linkedFormTemplateId ?? null,
         registrationType,
         slots: [],
         privateSlots,
@@ -533,20 +602,26 @@ function SetPaymentModal({ row, token, onClose, onSaved }) {
         </label>
 
         {requiresPayment && (
-          <div className="flex items-center gap-1.5 mb-2">
-            <input value={currency} onChange={(e) => setCurrency(e.target.value)} className={`${control.inputSm} w-16`} />
-            <input type="number" min="1" step="0.01" placeholder="Price" value={price} onChange={(e) => setPrice(e.target.value)} className={control.inputSm} />
-          </div>
+          <>
+            <label className={control.label}>Currency</label>
+            <input value={currency} onChange={(e) => setCurrency(e.target.value)} className={`${control.inputSm} w-16 mb-2`} />
+            {offersGroup && (
+              <>
+                <label className={control.label}>Public price (per person)</label>
+                <input type="number" min="1" step="0.01" placeholder="Public price" value={price} onChange={(e) => setPrice(e.target.value)} className={`${control.input} mb-2`} />
+              </>
+            )}
+            {offersPrivate && (
+              <>
+                <label className={control.label}>Private price (per person)</label>
+                <input type="number" min="1" step="0.01" placeholder={offersGroup ? "Blank = same as public" : "Private price"} value={privatePrice} onChange={(e) => setPrivatePrice(e.target.value)} className={`${control.input} mb-2`} />
+              </>
+            )}
+          </>
         )}
 
         <label className={control.label}>Capacity (blank = unlimited)</label>
         <input type="number" min="0" value={capacityTotal} onChange={(e) => setCapacityTotal(e.target.value)} className={`${control.input} mb-2`} />
-
-        <label className={control.label}>Registration form</label>
-        <select value={linkedFormTemplateId} onChange={(e) => setLinkedFormTemplateId(e.target.value)} className={`${control.input} mb-2`}>
-          <option value="">— Select a form —</option>
-          {forms.map((f) => <option key={f.id} value={f.id}>{f.title}</option>)}
-        </select>
 
         {error && <p className={`${text.body} mb-2`} style={{ color: theme.dangerColor }}>{error}</p>}
 
@@ -557,6 +632,37 @@ function SetPaymentModal({ row, token, onClose, onSaved }) {
           <button type="button" onClick={onClose} className={control.btnGhost} style={{ borderColor: theme.borderColor, color: theme.textColor }}>Cancel</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Asks for the copy's name before cloning. The API leaves the copy's dates
+ *  blank, so the builder it opens next is where the new date gets set. */
+function CloneModal({ row, saving, error, onClose, onSave }) {
+  const { theme } = adminConfig;
+  const { text, control } = adminUi;
+  const [title, setTitle] = useState(`${row.title} (Copy)`);
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (title.trim()) onSave(title.trim());
+  };
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+      <form role="dialog" aria-modal="true" onSubmit={submit} onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-lg border p-4" style={{ backgroundColor: theme.cardBackground, borderColor: theme.borderColor }}>
+        <h2 className={`${text.subheader} mb-2`}>Clone — {row.title}</h2>
+        <label className={control.label}>Name of the new {(row.type || "experience").toLowerCase()}</label>
+        <input autoFocus value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} className={`${control.input} mb-2`} />
+        <p className={`${text.body} mb-2 opacity-60`}>Content, prices and registration form are copied. Dates are left blank — set the new date in the builder.</p>
+        {error && <p className={`${text.body} mb-2`} style={{ color: theme.dangerColor }}>{error}</p>}
+        <div className="flex gap-2">
+          <button type="submit" disabled={saving || !title.trim()} className={control.btnPrimary} style={{ backgroundColor: theme.accentColor, color: theme.pageBackground }}>
+            {saving ? "Cloning…" : "Clone"}
+          </button>
+          <button type="button" onClick={onClose} className={control.btnGhost} style={{ borderColor: theme.borderColor, color: theme.textColor }}>Cancel</button>
+        </div>
+      </form>
     </div>
   );
 }

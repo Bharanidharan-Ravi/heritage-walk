@@ -1,5 +1,8 @@
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
 # More GitHub Actions for Azure: https://github.com/Azure/actions
+#
+# Mono-repo: the API lives in hertiagewalkApi/, so this only runs when that
+# folder (or this file) changes. The UI (UI/) is deployed by Vercel instead.
 
 name: Build and deploy ASP.Net Core app to Azure Web App - archaeotrails-api
 
@@ -7,6 +10,9 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'hertiagewalkApi/**'
+      - '.github/workflows/main_archaeotrails-api.yml'
   workflow_dispatch:
 
 jobs:
@@ -23,11 +29,11 @@ jobs:
         with:
           dotnet-version: '8.x'
 
-      - name: Build with dotnet
-        run: dotnet build --configuration Release
+      - name: Run tests
+        run: dotnet test hertiagewalkApi/ArchaeoTrails.Application.Tests --configuration Release
 
       - name: dotnet publish
-        run: dotnet publish -c Release -o "${{env.DOTNET_ROOT}}/myapp"
+        run: dotnet publish hertiagewalkApi/ArchaeoTrails.Api/ArchaeoTrails.Api.csproj -c Release -o "${{env.DOTNET_ROOT}}/myapp"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -38,28 +44,21 @@ jobs:
   deploy:
     runs-on: windows-latest
     needs: build
-    permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
 
     steps:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: .net-app
-      
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_CDE3DBFE0F86481AA810703FA7EE506E }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_4E52C25EBB744425A7E3AD47B14F4AE6 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_5587314939774F33B8AA1F6E46E21FBA }}
 
+      # Secret = the App Service's publish profile (Portal → archaeotrails-api →
+      # Overview → Download publish profile → paste the whole XML into the repo
+      # secret AZURE_WEBAPP_PUBLISH_PROFILE).
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'archaeotrails-api'
           slot-name: 'Production'
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
           package: .
-          

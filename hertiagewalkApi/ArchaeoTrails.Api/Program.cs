@@ -1,4 +1,7 @@
 using System.Text;
+using System.Threading.RateLimiting;
+using ArchaeoTrails.Api.Background;
+using ArchaeoTrails.Api.Controllers;
 using ArchaeoTrails.Api.Debugging;
 using ArchaeoTrails.Api.Hubs;
 using ArchaeoTrails.Api.RealTime;
@@ -51,21 +54,26 @@ builder.Services.AddScoped<IEmailService, ZohoEmailService>();
 // TODO(form-generator): set ConnectionStrings:AzureSql via `dotnet user-secrets`
 // (dev) or Azure App Service configuration (prod) — never in appsettings.json.
 //
-// DEV NOTE (temporary): pointed at a local SQL Server instance instead of
-// Azure SQL to avoid burning Azure free-tier compute while iterating on
-// migrations locally. Swap back to "AzureSql" before deploying/merging to
-// production. Both connection strings live in `dotnet user-secrets` for the
-// ArchaeoTrails.Api project (ConnectionStrings:AzureSql / ConnectionStrings:SqlServerConnection),
-// never in appsettings.json.
+// Development uses a local SQL Server (SqlServerConnection) so iterating on
+// migrations doesn't burn Azure free-tier compute; every other environment
+// uses Azure SQL (AzureSql). Both live in `dotnet user-secrets` (dev) or the
+// App Service's Connection strings (prod) — never in appsettings.json.
+var connectionName = builder.Environment.IsDevelopment() ? "SqlServerConnection" : "AzureSql";
+var connectionString = builder.Configuration.GetConnectionString(connectionName);
+if (string.IsNullOrWhiteSpace(connectionString) || connectionString == "REPLACE_ME")
+{
+    throw new InvalidOperationException(
+        $"ConnectionStrings:{connectionName} is not configured. In Development, run " +
+        $"`dotnet user-secrets set \"ConnectionStrings:{connectionName}\" \"<connection string>\"` " +
+        "from ArchaeoTrails.Api. In Production, add it under the App Service's " +
+        "Configuration → Connection strings.");
+}
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(
-        // builder.Configuration.GetConnectionString("AzureSql"),
-        builder.Configuration.GetConnectionString("SqlServerConnection"),
-        sqlOptions => sqlOptions.EnableRetryOnFailure()));
+    options.UseSqlServer(connectionString, sqlOptions => sqlOptions.EnableRetryOnFailure()));
 
 builder.Services.AddScoped<IFormTemplateRepository, EfFormTemplateRepository>();
 builder.Services.AddScoped<IFormSubmissionRepository, EfFormSubmissionRepository>();
-builder.Services.AddScoped<IPaymentService, RazorpayPaymentService>();
+builder.Services.AddHttpClient<IPaymentService, RazorpayPaymentService>();
 builder.Services.AddScoped<IQrCodeService, QrCodeService>();
 
 // --- Payment & Pricing (phase 1: configuration + pricing engine only) ------
@@ -77,6 +85,36 @@ builder.Services.AddSingleton<IGatewayCostStrategy, StandardGatewayCostStrategy>
 builder.Services.AddSingleton<IGatewayCostStrategy, CurrentOfferGatewayCostStrategy>();
 builder.Services.AddSingleton<IGatewayCostStrategy, CustomGatewayCostStrategy>();
 builder.Services.AddSingleton<IPricingService, PricingService>();
+
+// --- Bookings: Pay Now via Cashfree ----------------------------------------
+// Keys come from `dotnet user-secrets` (dev) or Azure App Service config
+// (Cashfree__Sandbox__AppId / __SecretKey and Cashfree__Production__AppId /
+// __SecretKey) — never appsettings.json. Which pair is used follows
+// PaymentSettings.Environment (Admin → Payment settings).
+builder.Services.AddHttpClient<IPaymentGateway, CashfreePaymentGateway>();
+var bookingOptions = builder.Configuration.GetSection("Bookings").Get<BookingOptions>() ?? new BookingOptions();
+// The confirmation email links to the same /booking/{order_id} page Cashfree returns to.
+bookingOptions.BookingUrlTemplate ??= builder.Configuration["Cashfree:ReturnUrl"];
+builder.Services.AddSingleton(bookingOptions);
+builder.Services.AddScoped<IPaymentWebhookEventRepository, EfPaymentWebhookEventRepository>();
+builder.Services.AddScoped<IBookingService, BookingService>();
+// Marks unpaid holds Expired (or confirms them if Cashfree says they were paid).
+builder.Services.AddHostedService<BookingExpiryWorker>();
+
+// Public booking routes are rate-limited per client IP (built into ASP.NET
+// Core — no package). Polling the confirmation page is ~12 reads per booking,
+// so the read limit leaves plenty of room; each write calls Cashfree.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, token) =>
+    {
+        await context.HttpContext.Response.WriteAsJsonAsync(
+            new { status = "error", message = "Too many requests — please wait a minute and try again." }, token);
+    };
+    options.AddPolicy(RateLimitPolicies.BookingRead, http => PerIpLimit(http, 60));
+    options.AddPolicy(RateLimitPolicies.BookingWrite, http => PerIpLimit(http, 10));
+});
 
 // --- Experiences module (Walk/Seminar/Course builder + approval workflow) ---
 // Sanity:WriteToken is placeholder-only ("REPLACE_ME") in appsettings.json —
@@ -197,15 +235,19 @@ builder.Services.AddScoped<IUserManagementService, UserManagementService>();
 // Built into the ASP.NET Core shared framework — no NuGet package needed.
 builder.Services.AddSignalR();
 
+// Cors:AllowedOrigins in appsettings.json; add an origin in production without
+// a code change via App Service settings (Cors__AllowedOrigins__3 = https://…).
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+if (allowedOrigins is not { Length: > 0 })
+{
+    allowedOrigins = new[] { "http://localhost:5173", "https://archaeotrails.com", "https://www.archaeotrails.com" };
+}
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins(
-                 "http://localhost:5173",
-                 "https://archaeotrails.com",
-                 "https://www.archaeotrails.com"
-             ) // Update this to your React app's local/prod URL
+        policy.WithOrigins(allowedOrigins)
                .AllowAnyHeader()
               .AllowAnyMethod()
               // Required for SignalR's negotiate/WebSocket handshake. Safe
@@ -232,6 +274,7 @@ if (debugErrors)
 
 app.UseHttpsRedirection();
 app.UseCors("AllowFrontend");
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -246,3 +289,14 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+
+// A fixed one-minute window per client IP.
+static RateLimitPartition<string> PerIpLimit(HttpContext http, int perMinute) =>
+    RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = perMinute,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        });

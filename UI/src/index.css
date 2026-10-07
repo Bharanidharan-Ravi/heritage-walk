@@ -10,7 +10,10 @@
   width: 100vw;
   margin: 0;
   padding: 0;
-  overflow-x: hidden; /* Prevents horizontal scrollbar */
+  /* Prevents horizontal scrollbar. `clip`, not `hidden`: `hidden` turns these
+     into scroll containers, which breaks every `position: sticky` on the site
+     (e.g. the experience page's booking card). */
+  overflow-x: clip;
 }
 
 /* Minimal scrollbars everywhere (the admin builder's independently-scrolling

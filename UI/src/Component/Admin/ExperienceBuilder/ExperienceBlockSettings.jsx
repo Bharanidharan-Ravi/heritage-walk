@@ -9,6 +9,8 @@
 
 import React, { useRef, useState } from "react";
 import { experienceBuilderConfig, blockMetaFor } from "../../Config/experienceBuilder.config";
+import { experiencePublicConfig } from "../../Config/experiencePublic.config";
+import { formBuilderConfig } from "../../Config/formBuilder.config";
 import { adminUi } from "../../Config/adminUi.config";
 import { adminApi } from "../adminApi";
 import { useExperienceImageUpload, validateImageFile, ACCEPTED_IMAGE_TYPES } from "./imageUpload";
@@ -58,6 +60,7 @@ export default function ExperienceBlockSettings({
   token,
   requiresPayment, onRequiresPaymentChange,
   price, onPriceChange,
+  privatePrice, onPrivatePriceChange,
   currency, onCurrencyChange,
   capacityTotal, onCapacityTotalChange,
   registrationType, onRegistrationTypeChange,
@@ -83,6 +86,7 @@ export default function ExperienceBlockSettings({
         token={token}
         requiresPayment={requiresPayment} onRequiresPaymentChange={onRequiresPaymentChange}
         price={price} onPriceChange={onPriceChange}
+        privatePrice={privatePrice} onPrivatePriceChange={onPrivatePriceChange}
         currency={currency} onCurrencyChange={onCurrencyChange}
         capacityTotal={capacityTotal} onCapacityTotalChange={onCapacityTotalChange}
         registrationType={registrationType} onRegistrationTypeChange={onRegistrationTypeChange}
@@ -119,6 +123,10 @@ export default function ExperienceBlockSettings({
         <input value={block.label} onChange={(e) => patch({ label: e.target.value })} className={control.input} />
       </Labelled>
 
+      <Labelled label="Block width" help="How much row space this section takes — two Half sections sit side by side, same as a form field.">
+        <ItemWidthPicker value={block.width || 12} onChange={(width) => patch({ width })} />
+      </Labelled>
+
       <BlockValueEditor block={block} patch={patch} />
     </aside>
   );
@@ -135,6 +143,7 @@ function CartEditor({
   token,
   requiresPayment, onRequiresPaymentChange,
   price, onPriceChange,
+  privatePrice, onPrivatePriceChange,
   currency, onCurrencyChange,
   capacityTotal, onCapacityTotalChange,
   registrationType, onRegistrationTypeChange,
@@ -147,6 +156,10 @@ function CartEditor({
 }) {
   const offersGroup = registrationType !== "Private";
   const offersPrivate = registrationType !== "Group";
+  // The calculator works on whichever price is shown first: Public, or
+  // Private when Private is the only option.
+  const calcPrice = offersGroup ? price : privatePrice;
+  const setCalcPrice = offersGroup ? onPriceChange : onPrivatePriceChange;
 
   // Three separate dates: Booking end date (Group deadline), Experience date
   // (the day Group runs — saved as startDate) and the Private Start/End range,
@@ -181,7 +194,7 @@ function CartEditor({
     try {
       const result = await adminApi.calculatePrice(token, {
         baseAmount: amount,
-        customerAmount: price ? Number(price) : undefined,
+        customerAmount: calcPrice ? Number(calcPrice) : undefined,
       });
       setCalc(result);
     } catch (err) {
@@ -201,7 +214,7 @@ function CartEditor({
 
   // Live, client-side re-check against the last-fetched minimum whenever the
   // admin edits Price by hand — no extra round-trip needed for this part.
-  const belowMinimum = calc && price !== "" && Number(price) < calc.minimumCustomerAmount;
+  const belowMinimum = calc && calcPrice !== "" && Number(calcPrice) < calc.minimumCustomerAmount;
 
   return (
     <aside className={`rounded-lg border ${adminUi.pad.panel} h-fit lg:sticky lg:top-4 ${adminUi.stack.sm}`} style={{ backgroundColor: theme.panelBackground, borderColor: theme.borderColor }}>
@@ -212,11 +225,24 @@ function CartEditor({
         <span className={text.body}>Requires payment</span>
       </label>
 
+      {/* One price per registration option on offer — Public (Group) and/or
+          Private. Registration type is chosen further down; these follow it. */}
       {requiresPayment && (
-        <div className="flex items-center gap-1.5">
-          <input value={currency} onChange={(e) => onCurrencyChange(e.target.value)} className={`${control.inputSm} w-16`} />
-          <input type="number" min="1" step="0.01" placeholder="Price" value={price} onChange={(e) => onPriceChange(e.target.value)} className={control.inputSm} />
-        </div>
+        <>
+          <Labelled label="Currency">
+            <input value={currency} onChange={(e) => onCurrencyChange(e.target.value)} className={`${control.inputSm} w-16`} />
+          </Labelled>
+          {offersGroup && (
+            <Labelled label="Public price (per person)">
+              <input type="number" min="1" step="0.01" placeholder="Public price" value={price} onChange={(e) => onPriceChange(e.target.value)} className={control.input} />
+            </Labelled>
+          )}
+          {offersPrivate && (
+            <Labelled label="Private price (per person)" help={offersGroup ? "Blank = same as the public price." : undefined}>
+              <input type="number" min="1" step="0.01" placeholder="Private price" value={privatePrice} onChange={(e) => onPrivatePriceChange(e.target.value)} className={control.input} />
+            </Labelled>
+          )}
+        </>
       )}
 
       {requiresPayment && belowMinimum && (
@@ -254,14 +280,14 @@ function CartEditor({
                   <button
                     key={s.strategy}
                     type="button"
-                    onClick={() => onPriceChange(String(s.amount))}
+                    onClick={() => setCalcPrice(String(s.amount))}
                     className={text.body}
                     style={{
                       border: `1px solid ${theme.borderColor}`,
                       borderRadius: 6,
                       padding: "2px 8px",
-                      backgroundColor: Number(price) === s.amount ? theme.accentColor : "transparent",
-                      color: Number(price) === s.amount ? theme.pageBackground : theme.textColor,
+                      backgroundColor: Number(calcPrice) === s.amount ? theme.accentColor : "transparent",
+                      color: Number(calcPrice) === s.amount ? theme.pageBackground : theme.textColor,
                     }}
                   >
                     ₹{formatINR(s.amount)} · {s.label}
@@ -463,7 +489,17 @@ function BlockValueEditor({ block, patch }) {
       return <GalleryDropzone items={block.items} onChange={(items) => patch({ items })} />;
 
     case "repeatableList":
-      return <StringListEditor label="Items" placeholder="Add an item…" items={block.items} onChange={(items) => patch({ items })} />;
+      return (
+        <>
+          <Labelled label="Item width" help="How many items sit on one row — same widths as a form field.">
+            <ItemWidthPicker
+              value={block.itemWidth || (isChecklistKey(block.blockKey) ? 6 : 12)}
+              onChange={(itemWidth) => patch({ itemWidth })}
+            />
+          </Labelled>
+          <StringListEditor label="Items" placeholder="Add an item…" items={block.items} onChange={(items) => patch({ items })} />
+        </>
+      );
 
     case "faqList":
       return <FaqListEditor items={block.items} onChange={(items) => patch({ items })} />;
@@ -511,6 +547,36 @@ function Labelled({ label, help, children }) {
       <label className={control.label}>{label}</label>
       {children}
       {help && <p className={control.help}>{help}</p>}
+    </div>
+  );
+}
+
+/** Same key set BlockValue uses to pick the checkmark/cross 2-per-row style. */
+const isChecklistKey = (blockKey) =>
+  experiencePublicConfig.positiveListKeys.includes(blockKey) || experiencePublicConfig.negativeListKeys.includes(blockKey);
+
+/** Full / Half / Third / Quarter pill picker — the same 12-column widths a
+ *  form field uses (Config/formBuilder.config.jsx `widths`), reused here so
+ *  list items (Activities, What to Bring, ...) lay out the same way. */
+function ItemWidthPicker({ value, onChange }) {
+  return (
+    <div className="flex gap-1.5">
+      {formBuilderConfig.widths.map((w) => (
+        <button
+          key={w.value}
+          type="button"
+          title={w.hint}
+          onClick={() => onChange(w.value)}
+          className="px-2.5 py-1 rounded text-xs font-semibold uppercase tracking-wide transition-colors"
+          style={{
+            backgroundColor: value === w.value ? "rgba(193,157,96,0.18)" : "transparent",
+            color: value === w.value ? theme.accentColor : theme.mutedColor,
+            border: `1px solid ${theme.borderColor}`,
+          }}
+        >
+          {w.label}
+        </button>
+      ))}
     </div>
   );
 }

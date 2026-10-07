@@ -1,7 +1,7 @@
 // src/testMode.js
 //
 // "Test mode" = the whole public site served under /test (router basename)
-// reading the Sanity `test` dataset. Only active in dev, or in a build made
+// reading the Sanity `development` dataset. Only active in dev, or in a build made
 // with VITE_ENABLE_TEST_PAGE=true — otherwise /test is just an unknown route.
 //
 // vite.config.js imports sanityClient.js in Node (no import.meta.env, no
@@ -17,6 +17,11 @@ export const isTestMode =
   TEST_ENABLED && (path === "/test" || path.startsWith("/test/"));
 
 export const TEST_BASENAME = "/test";
+
+// Sent with every .NET API call so experiences created under /test stay
+// separate from the live site's (see ExperiencesController.IsTestSite).
+export const SITE_ENV_HEADERS = isTestMode ? { "X-Site-Env": "test" } : {};
+
 export const SANITY_DATASET = isTestMode
-  ? env.VITE_SANITY_TEST_DATASET || "test"
+  ? env.VITE_SANITY_TEST_DATASET || "development"
   : "production";

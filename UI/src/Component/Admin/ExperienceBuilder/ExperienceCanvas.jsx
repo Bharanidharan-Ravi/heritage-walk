@@ -61,6 +61,7 @@ export default function ExperienceCanvas({
   isAdmin,
   requiresPayment,
   price,
+  privatePrice,
   currency,
   capacityTotal,
   registrationType,
@@ -299,11 +300,11 @@ export default function ExperienceCanvas({
                 if (!e.currentTarget.contains(e.relatedTarget)) clearDrop();
               }}
               onDrop={handleDropOnStream}
-              className="space-y-3 mb-8"
+              className="grid grid-cols-12 gap-3 mb-8"
             >
               {streamBlocks.length === 0 && (
                 <div
-                  className="rounded-xl border-2 border-dashed py-6 text-center"
+                  className="col-span-12 rounded-xl border-2 border-dashed py-6 text-center"
                   style={{ borderColor: drag ? pageTheme.accentColor : pageTheme.borderColor, color: pageTheme.mutedColor }}
                 >
                   <p className={text.body}>Drag more blocks in from the left to build out the page.</p>
@@ -352,6 +353,7 @@ export default function ExperienceCanvas({
                 <CartSkeleton
                   requiresPayment={requiresPayment}
                   price={price}
+                  privatePrice={privatePrice}
                   currency={currency}
                   capacityTotal={capacityTotal}
                   registrationType={registrationType}
@@ -558,7 +560,7 @@ function EmptyHint({ theme, height = "", compact, children }) {
 }
 
 function DropBar({ theme }) {
-  return <div className="h-1 rounded-full" style={{ backgroundColor: theme.accentColor }} aria-hidden="true" />;
+  return <div className="h-1 rounded-full" style={{ gridColumn: "1 / -1", backgroundColor: theme.accentColor }} aria-hidden="true" />;
 }
 
 /** One reorderable, real-styled block in the free content stream. */
@@ -567,6 +569,7 @@ function StreamItem({
   onSelect, onDragOver, onDragStart, onDragEnd, onNudge, onRemove, onDuplicate,
 }) {
   const meta = blockMetaFor(experienceType, block);
+  const width = block.width || 12;
 
   return (
     <div
@@ -579,6 +582,7 @@ function StreamItem({
       style={{
         backgroundColor: pageTheme.cardBackground,
         boxShadow: selected ? `0 0 0 2px ${pageTheme.accentColor}` : `0 0 0 1px ${pageTheme.borderColor}`,
+        gridColumn: `span ${width} / span ${width}`,
       }}
     >
       <div className="flex items-center gap-1.5 mb-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
@@ -633,7 +637,7 @@ function CardButton({ children, label, onClick, disabled, danger }) {
  *  whatever's currently configured (still read-only HERE — clicking it
  *  selects CART_BLOCK_ID and the actual editing happens in the sidebar's
  *  CartEditor, same as every other slot on this canvas). */
-function CartSkeleton({ editable, requiresPayment, price, currency, capacityTotal, registrationType, privateSlots, privateMinPeople, startDate }) {
+function CartSkeleton({ editable, requiresPayment, price, privatePrice, currency, capacityTotal, registrationType, privateSlots, privateMinPeople, startDate }) {
   if (!editable) {
     return (
       <div className="lg:sticky lg:top-4 rounded-3xl p-6 border-2 border-dashed" style={{ borderColor: pageTheme.borderColor, backgroundColor: pageTheme.cardBackground }}>
@@ -662,7 +666,9 @@ function CartSkeleton({ editable, requiresPayment, price, currency, capacityTota
         {builderContent.cartSkeletonTitle} — click to edit
       </span>
       <div className="space-y-2.5">
-        <SummaryRow label="Price" value={requiresPayment ? `${currency} ${price || 0}` : "Free"} />
+        {!requiresPayment && <SummaryRow label="Price" value="Free" />}
+        {requiresPayment && registrationType !== "Private" && <SummaryRow label="Public price" value={`${currency} ${price || 0}`} />}
+        {requiresPayment && registrationType !== "Group" && <SummaryRow label="Private price" value={`${currency} ${privatePrice || price || 0}`} />}
         <SummaryRow label="Registration" value={registrationLabel} />
         {registrationType !== "Private" && <SummaryRow label={builderContent.experienceDateLabel} value={startDate || builderContent.dateNotSetSummary} />}
         {registrationType !== "Group" && <SummaryRow label="Private dates" value={privateSlots?.length ? `${privateSlots.length} date${privateSlots.length === 1 ? "" : "s"}` : "None set yet"} />}

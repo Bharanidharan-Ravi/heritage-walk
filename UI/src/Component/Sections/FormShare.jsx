@@ -10,6 +10,7 @@
 import React, { useState } from "react";
 import { formConfig } from "../Config/form.config";
 import { adminUi } from "../Config/adminUi.config";
+import { isTestMode, TEST_BASENAME } from "../../testMode";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -19,7 +20,8 @@ export default function FormShare({ slug, compact = false }) {
   const { theme } = formConfig;
   const [copied, setCopied] = useState(false);
 
-  const shareUrl = `${window.location.origin}/forms/${slug}`;
+  // Keep the /test prefix so links shared from /test/admin open the test site.
+  const shareUrl = `${window.location.origin}${isTestMode ? TEST_BASENAME : ""}/forms/${slug}`;
   const qrImageUrl = `${API_BASE}/api/forms/${slug}/qr`;
 
   const handleCopy = async () => {

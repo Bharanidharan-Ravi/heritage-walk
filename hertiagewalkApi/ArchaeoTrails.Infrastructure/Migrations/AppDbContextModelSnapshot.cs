@@ -67,6 +67,9 @@ namespace ArchaeoTrails.Infrastructure.Migrations
                     b.Property<DateTime?>("EndDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool>("IsTest")
+                        .HasColumnType("bit");
+
                     b.Property<string>("LastSyncError")
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
@@ -82,6 +85,9 @@ namespace ArchaeoTrails.Infrastructure.Migrations
 
                     b.Property<int>("PrivateMinPeople")
                         .HasColumnType("int");
+
+                    b.Property<decimal?>("PrivatePrice")
+                        .HasColumnType("decimal(10,2)");
 
                     b.Property<string>("PrivateSlotsJson")
                         .IsRequired()
@@ -127,6 +133,8 @@ namespace ArchaeoTrails.Infrastructure.Migrations
 
                     b.HasIndex("CreatedByUserId");
 
+                    b.HasIndex("IsTest");
+
                     b.HasIndex("LinkedFormTemplateId");
 
                     b.HasIndex("Status");
@@ -148,6 +156,10 @@ namespace ArchaeoTrails.Infrastructure.Migrations
                     b.Property<DateTime?>("BookedSlot")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("BookingRef")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -159,15 +171,41 @@ namespace ArchaeoTrails.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid?>("ExperienceTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("FormTemplateId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("RazorpayOrderId")
+                    b.Property<string>("GatewayOrderId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                    b.Property<string>("RazorpayPaymentId")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<string>("GatewayPaymentId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("GatewaySessionId")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PaymentGateway")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RegistrationType")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -178,9 +216,19 @@ namespace ArchaeoTrails.Infrastructure.Migrations
                     b.Property<string>("SubmitterName")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("SubmitterPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("FormTemplateId");
+                    b.HasIndex("BookingRef")
+                        .IsUnique()
+                        .HasFilter("[BookingRef] IS NOT NULL");
+
+                    b.HasIndex("FormTemplateId", "Status");
+
+                    b.HasIndex("Status", "ExpiresAt");
 
                     b.ToTable("FormSubmissions");
                 });
@@ -300,6 +348,48 @@ namespace ArchaeoTrails.Infrastructure.Migrations
                             Provider = "Cashfree",
                             UpdatedAt = new DateTime(2026, 9, 20, 0, 0, 0, 0, DateTimeKind.Utc)
                         });
+                });
+
+            modelBuilder.Entity("ArchaeoTrails.Domain.Entities.PaymentWebhookEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EventType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Gateway")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("GatewayOrderId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("ProcessedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RawBody")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GatewayOrderId");
+
+                    b.HasIndex("ReceivedAt");
+
+                    b.ToTable("PaymentWebhookEvents");
                 });
 
             modelBuilder.Entity("ArchaeoTrails.Infrastructure.Identity.ApplicationUser", b =>

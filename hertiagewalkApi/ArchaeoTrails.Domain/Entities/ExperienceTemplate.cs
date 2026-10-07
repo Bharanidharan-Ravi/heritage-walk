@@ -42,7 +42,19 @@ namespace ArchaeoTrails.Domain.Entities
         // ---- Admin-controlled payment/capacity (spec: Employee never sets these) ----
 
         public bool RequiresPayment { get; set; }
+        /// <summary>
+        /// Per-person price the customer pays for a Group booking. Already the
+        /// final amount — platform + gateway fees are baked in by the Admin's
+        /// price calculator, so checkout never adds anything on top.
+        /// </summary>
         public decimal Price { get; set; }
+
+        /// <summary>
+        /// Per-person price for a Private booking (final, fees included). Null
+        /// = Private is charged the same as <see cref="Price"/>.
+        /// </summary>
+        public decimal? PrivatePrice { get; set; }
+
         public string Currency { get; set; } = "INR";
 
         /// <summary>Total seats; null = unlimited.</summary>
@@ -90,6 +102,13 @@ namespace ArchaeoTrails.Domain.Entities
 
         /// <summary>Deadline after which the linked form stops accepting new bookings. Separate from EndDate.</summary>
         public DateTime? BookingEndDate { get; set; }
+
+        /// <summary>
+        /// True for rows created from the /test site (request header
+        /// X-Site-Env: test). Test rows only ever show under /test and live
+        /// rows never do, so the two sites share one database without mixing.
+        /// </summary>
+        public bool IsTest { get; set; }
 
         // ---- Workflow bookkeeping ----
 

@@ -24,6 +24,18 @@ export const formConfig = {
     successMessage: "Payment received — your form has been submitted!",
     paymentFailedMessage: "Payment could not be verified. Please try again.",
 
+    // Experience bookings (Cashfree) — price per person × people
+    bookingNotice: (unit, qty, total, currency) =>
+      qty > 1
+        ? `${currency} ${unit} × ${qty} people = ${currency} ${total} — payment required to book.`
+        : `${currency} ${total} — payment required to book.`,
+    bookingPayButtonLabel: (total, currency) => `Pay ${currency} ${total}`,
+    phoneRequiredMessage: "Please enter your 10-digit mobile number — it's needed for payment.",
+    // Shown after a reload mid-payment. Paying again is safe — the earlier
+    // attempt is cancelled (or, if it was paid, you're taken to it).
+    resumeNotice: (ref) => `You started a payment for booking ${ref}. Already paid?`,
+    resumeLinkLabel: "Check your booking status",
+
     // Free forms (requiresPayment === false)
     freeNotice: "No payment needed — just fill it in and send.",
     submitButtonLabel: "Submit",
@@ -31,5 +43,8 @@ export const formConfig = {
     freeSuccessMessage: "Thank you — your response has been submitted!",
 
     genericErrorMessage: "Something went wrong. Please try again.",
+    // Cashfree.js couldn't be downloaded (network or an ad/tracker blocker).
+    paymentWindowBlockedMessage:
+      "The payment window couldn't load. Check your internet connection or pause your ad blocker for this site, then try again.",
   },
 };

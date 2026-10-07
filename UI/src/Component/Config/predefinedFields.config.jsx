@@ -67,17 +67,34 @@ export const predefinedBlocks = [
     group: "Personal",
     paletteLabel: "Name",
     icon: "user",
-    keywords: "full name person applicant",
+    keywords: "full name first last person applicant",
+    // Drops as a First Name + Last Name pair (see useFormBuilder.addField).
+    // `mergedLabel`/`mergedPlaceholder` are what First Name folds back into
+    // if the author later deletes Last Name — there's no point asking for
+    // two names when only one field is left to hold it.
     field: {
       type: "text",
-      name: "fullName",
-      label: "Full Name",
-      placeholder: "As it appears on your ID",
+      name: "firstName",
+      label: "First Name",
+      placeholder: "First name",
       required: true,
       width: 6,
       // Marks this as the field whose answer becomes SubmitterName on submit.
       role: "submitterName",
-      validation: { minLength: 2, message: "Please enter your full name." },
+      pairRole: "first",
+      mergedLabel: "Full Name",
+      mergedPlaceholder: "As it appears on your ID",
+      validation: { minLength: 1, message: "Please enter your first name." },
+    },
+    pairedField: {
+      type: "text",
+      name: "lastName",
+      label: "Last Name",
+      placeholder: "Last name",
+      required: true,
+      width: 6,
+      pairRole: "last",
+      validation: { minLength: 1, message: "Please enter your last name." },
     },
   },
   {
@@ -92,7 +109,7 @@ export const predefinedBlocks = [
       label: "Email Address",
       placeholder: "you@example.com",
       required: true,
-      width: 6,
+      width: 12,
       role: "submitterEmail",
       validation: {
         pattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$",
@@ -113,8 +130,24 @@ export const predefinedBlocks = [
       label: "Phone Number",
       placeholder: "10-digit mobile number",
       required: true,
-      width: 6,
+      width: 12,
       validation: { ...INDIAN_MOBILE },
+    },
+  },
+  {
+    key: "age",
+    group: "Personal",
+    paletteLabel: "Age",
+    icon: "user",
+    keywords: "age years old birthdate dob",
+    field: {
+      type: "number",
+      name: "age",
+      label: "Age",
+      placeholder: "Years",
+      required: true,
+      width: 12,
+      validation: { min: 1, max: 120, inputMode: "numeric", message: "Enter a valid age." },
     },
   },
   {
@@ -129,7 +162,7 @@ export const predefinedBlocks = [
       label: "Emergency Contact Number",
       placeholder: "Reachable during the tour",
       required: true,
-      width: 6,
+      width: 12,
       validation: { ...INDIAN_MOBILE },
     },
   },
@@ -227,7 +260,7 @@ export const predefinedBlocks = [
       label: "Registration type",
       placeholder: "-Select-",
       required: true,
-      width: 6,
+      width: 12,
       options: ["Group", "Private"],
     },
   },
@@ -243,7 +276,7 @@ export const predefinedBlocks = [
       label: "Number of Attendees",
       placeholder: "1",
       required: true,
-      width: 6,
+      width: 12,
       helpText: "Enter 1 for an individual registration.",
       validation: { min: 1, max: 50, inputMode: "numeric", message: "Enter between 1 and 50 attendees." },
     },
@@ -333,8 +366,9 @@ export const predefinedBlocks = [
   },
 ];
 
-/** Catalogue keys of the blocks a brand-new form starts with. */
-export const DEFAULT_FORM_BLOCKS = ["fullName", "emailAddress"];
+/** Catalogue keys of the blocks a brand-new form starts with, in order:
+ *  First + Last Name (one row), Email, Phone, Emergency contact, Address. */
+export const DEFAULT_FORM_BLOCKS = ["fullName", "emailAddress", "phoneIndian", "emergencyContact", "addressIndian"];
 
 export const predefinedBlockByKey = Object.fromEntries(
   predefinedBlocks.map((b) => [b.key, b])

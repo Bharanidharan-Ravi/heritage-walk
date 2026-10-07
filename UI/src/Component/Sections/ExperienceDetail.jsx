@@ -12,6 +12,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { experiencePublicConfig } from "../Config/experiencePublic.config";
 import ExperiencePageView from "./ExperiencePageView";
+import { SITE_ENV_HEADERS } from "../../testMode";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -29,7 +30,7 @@ export default function ExperienceDetail() {
     async function load() {
       setStatus("loading");
       try {
-        const res = await fetch(`${API_BASE}/api/experiences/public/${id}`);
+        const res = await fetch(`${API_BASE}/api/experiences/public/${id}`, { headers: SITE_ENV_HEADERS });
         if (cancelled) return;
         if (res.status === 404) {
           setStatus("notfound");

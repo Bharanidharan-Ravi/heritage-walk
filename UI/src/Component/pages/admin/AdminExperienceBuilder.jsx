@@ -76,6 +76,7 @@ export default function AdminExperienceBuilder() {
   const [linkedFormTemplateId, setLinkedFormTemplateId] = useState(null);
   const [requiresPayment, setRequiresPayment] = useState(false);
   const [price, setPrice] = useState("");
+  const [privatePrice, setPrivatePrice] = useState("");
   const [currency, setCurrency] = useState("INR");
   const [capacityTotal, setCapacityTotal] = useState("");
   const [registrationType, setRegistrationType] = useState("Group");
@@ -107,6 +108,7 @@ export default function AdminExperienceBuilder() {
     setLinkedFormTemplateId(detail.linkedFormTemplateId ?? null);
     setRequiresPayment(detail.requiresPayment);
     setPrice(detail.requiresPayment ? String(detail.price) : "");
+    setPrivatePrice(detail.requiresPayment && detail.privatePrice != null ? String(detail.privatePrice) : "");
     setCurrency(detail.currency || "INR");
     setCapacityTotal(detail.capacityTotal ?? "");
     // "Individual" is the pre-rename spelling of Group.
@@ -146,6 +148,24 @@ export default function AdminExperienceBuilder() {
     queryClient.invalidateQueries({ queryKey: ["experiences", "list"] });
   };
 
+  // Group-only experiences run on a single day (the Experience date, saved as
+  // startDate) and the End date input is hidden for them — so End date is
+  // pinned to that day here. Otherwise a stale End date (e.g. carried over
+  // from an earlier Private setup) would file a freshly published walk
+  // straight under Closed.
+  const saveRequest = () => {
+    const req = builder.toSaveRequest();
+    return registrationType === "Group" ? { ...req, endDate: req.startDate } : req;
+  };
+
+  // One price per option on offer. Private-only has no Public price of its
+  // own, but the API still requires Price > 0 for a paid experience, so it
+  // mirrors the Private price there.
+  const offersGroup = registrationType !== "Private";
+  const offersPrivate = registrationType !== "Group";
+  const groupAmount = offersGroup ? Number(price) || 0 : Number(privatePrice) || 0;
+  const privateAmount = offersPrivate ? Number(privatePrice) || null : null;
+
   const handleSaveDraft = async () => {
     if (builder.validationErrors.length > 0) {
       setShowErrors(true);
@@ -155,10 +175,10 @@ export default function AdminExperienceBuilder() {
     setSaveError("");
     try {
       if (experienceId) {
-        await adminApi.updateExperience(token, experienceId, builder.toSaveRequest());
+        await adminApi.updateExperience(token, experienceId, saveRequest());
         invalidateAfterSave(experienceId);
       } else {
-        const result = await adminApi.createExperience(token, { type: experienceType, ...builder.toSaveRequest() });
+        const result = await adminApi.createExperience(token, { type: experienceType, ...saveRequest() });
         setExperienceId(result.id);
         invalidateAfterSave(result.id);
         navigate(`/admin/experiences/${result.id}/edit`, { replace: true });
@@ -180,9 +200,9 @@ export default function AdminExperienceBuilder() {
     try {
       let id = experienceId;
       if (id) {
-        await adminApi.updateExperience(token, id, builder.toSaveRequest());
+        await adminApi.updateExperience(token, id, saveRequest());
       } else {
-        const result = await adminApi.createExperience(token, { type: experienceType, ...builder.toSaveRequest() });
+        const result = await adminApi.createExperience(token, { type: experienceType, ...saveRequest() });
         id = result.id;
         setExperienceId(id);
       }
@@ -204,9 +224,8 @@ export default function AdminExperienceBuilder() {
   // builder's current state first (creating it if it has no id yet — same
   // request Save Draft itself sends, so the Admin never has to leave this
   // panel to save one first), then save payment/registration/slots.
-  // `linkedFormTemplateId` is carried through untouched: this editor never
-  // offers a form picker (that stays on the Experiences list page's own "Set
-  // Payment" modal), so resaving here must not clobber whatever's linked.
+  // `linkedFormTemplateId` is the registration form built on the second
+  // screen below — created here on first save, updated in place after.
   const handleSaveCart = async () => {
     if (builder.validationErrors.length > 0) {
       setShowErrors(true);
@@ -229,9 +248,9 @@ export default function AdminExperienceBuilder() {
     try {
       let id = experienceId;
       if (id) {
-        await adminApi.updateExperience(token, id, builder.toSaveRequest());
+        await adminApi.updateExperience(token, id, saveRequest());
       } else {
-        const result = await adminApi.createExperience(token, { type: experienceType, ...builder.toSaveRequest() });
+        const result = await adminApi.createExperience(token, { type: experienceType, ...saveRequest() });
         id = result.id;
         setExperienceId(id);
         navigate(`/admin/experiences/${id}/edit`, { replace: true });
@@ -248,7 +267,7 @@ export default function AdminExperienceBuilder() {
           ...regForm.toCreateRequest(),
           title: `${builder.title.trim() || typeLabel} — Registration`,
           requiresPayment,
-          price: requiresPayment ? Number(price) || 0 : 0,
+          price: requiresPayment ? groupAmount : 0,
           currency,
         };
         if (formId) {
@@ -262,7 +281,8 @@ export default function AdminExperienceBuilder() {
 
       await adminApi.setExperiencePayment(token, id, {
         requiresPayment,
-        price: requiresPayment ? Number(price) || 0 : 0,
+        price: requiresPayment ? groupAmount : 0,
+        privatePrice: requiresPayment ? privateAmount : null,
         currency,
         capacityTotal: capacityTotal === "" ? null : Number(capacityTotal),
         linkedFormTemplateId: formId,
@@ -389,6 +409,7 @@ export default function AdminExperienceBuilder() {
             isAdmin={isAdmin}
             requiresPayment={requiresPayment}
             price={price}
+            privatePrice={privatePrice}
             currency={currency}
             capacityTotal={capacityTotal}
             registrationType={registrationType}
@@ -419,6 +440,8 @@ export default function AdminExperienceBuilder() {
             onRequiresPaymentChange={setRequiresPayment}
             price={price}
             onPriceChange={setPrice}
+            privatePrice={privatePrice}
+            onPrivatePriceChange={setPrivatePrice}
             currency={currency}
             onCurrencyChange={setCurrency}
             capacityTotal={capacityTotal}
@@ -449,6 +472,11 @@ export default function AdminExperienceBuilder() {
           <p className={`${adminUi.text.body} mb-2 shrink-0`} style={{ color: theme.mutedColor }}>
             Registration form — drag in the fields visitors fill out. Saved with “Save cart settings” on the Page screen.
           </p>
+          {pageContent.attendeeNames.forRegistrationTypes.some((t) => registrationType === t || registrationType === "Both") && (
+            <p className={`${adminUi.text.body} mb-2 shrink-0`} style={{ color: theme.mutedColor }}>
+              {pageContent.attendeeNames.builderNote}
+            </p>
+          )}
 
           {regForm.fields.length > 0 && regForm.warnings.includes("noSubmitterEmail") && (
             <p className={`mb-3 ${adminUi.text.body}`} style={{ color: theme.mutedColor }}>
@@ -496,6 +524,7 @@ export default function AdminExperienceBuilder() {
                 onClick={() => { regForm.setSelectedId(null); setRegCartSelected(true); }}
                 requiresPayment={requiresPayment}
                 price={price}
+                privatePrice={privatePrice}
                 currency={currency}
                 capacityTotal={capacityTotal}
                 registrationType={registrationType}
@@ -525,6 +554,8 @@ export default function AdminExperienceBuilder() {
                 onRequiresPaymentChange={setRequiresPayment}
                 price={price}
                 onPriceChange={setPrice}
+                privatePrice={privatePrice}
+                onPrivatePriceChange={setPrivatePrice}
                 currency={currency}
                 onCurrencyChange={setCurrency}
                 capacityTotal={capacityTotal}
@@ -562,6 +593,7 @@ export default function AdminExperienceBuilder() {
           bookingEndDate={builder.bookingEndDate}
           requiresPayment={requiresPayment}
           price={price}
+          privatePrice={privatePrice}
           currency={currency}
           capacityTotal={capacityTotal}
           registrationType={registrationType}

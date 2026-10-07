@@ -45,6 +45,8 @@ export default function FormRenderer({
   light = false,
   // The page supplies its own action button (the booking card's Pay Now).
   hideSubmit = false,
+  // Lets a button outside the form submit it (`<button form={id}>`).
+  id,
 }) {
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -53,8 +55,8 @@ export default function FormRenderer({
 
   return (
     <LightToneContext.Provider value={light}>
-    <form onSubmit={handleSubmit} className="space-y-8" noValidate={readOnly}>
-      <div className="grid grid-cols-12 gap-x-5 gap-y-6">
+    <form id={id} onSubmit={handleSubmit} className="space-y-6" noValidate={readOnly}>
+      <div className="grid grid-cols-12 gap-x-4 gap-y-4">
         {form.fields.map((field) => (
           <FieldShell key={field.id || field.name} width={field.width}>
             <RenderedField
@@ -74,7 +76,7 @@ export default function FormRenderer({
         <button
           type="submit"
           disabled={submitting || readOnly}
-          className="w-full py-4 font-bold uppercase tracking-widest rounded-lg transition-all hover:opacity-90 shadow-lg disabled:opacity-50"
+          className="w-full h-11 text-[13.5px] font-semibold tracking-wide rounded-xl transition-all hover:opacity-90 shadow-lg disabled:opacity-50"
           style={{ backgroundColor: theme.buttonBackground, color: theme.buttonText }}
         >
           {submitLabel}
@@ -203,9 +205,10 @@ function InputField({ field, value, onChange, disabled, compact }) {
         <FieldFrame {...shared}>
           <div className={`flex flex-wrap pt-1 ${compact ? "gap-x-3 gap-y-1" : "gap-x-6 gap-y-3"}`}>
             {options.map((option) => (
-              <label key={option} className={`flex items-center gap-2 ${compact ? "text-[11px]" : "text-sm"}`}>
+              <label key={option} className={`flex items-center gap-2 ${compact ? "text-[11px]" : "text-[13.5px]"}`}>
                 <input
                   type="radio"
+                  className="accent-[#caa863]"
                   name={field.name}
                   value={option}
                   checked={value === option}
@@ -314,8 +317,8 @@ function TextLikeInput({ field, value, onChange, disabled, compact }) {
       {v.prefix ? (
         <div className="flex">
           <span
-            className={`grid place-items-center border border-r-0 rounded-l-lg shrink-0 ${light ? "border-black/10 bg-black/5" : "border-white/10 bg-white/5"} ${
-              compact ? "px-2 text-[12px] rounded-l-md" : "px-3 text-sm"
+            className={`grid place-items-center border border-r-0 shrink-0 ${light ? "border-black/10 bg-black/5" : "border-white/10 bg-white/5"} ${
+              compact ? "px-2 text-[12px] rounded-l-md" : "px-3 text-[13px] font-medium rounded-l-xl"
             }`}
             style={{ color: theme.accentColor }}
           >
@@ -328,7 +331,7 @@ function TextLikeInput({ field, value, onChange, disabled, compact }) {
       )}
 
       {showError && (
-        <p className={`text-red-400 ${compact ? "text-[10px] mt-1" : "text-xs mt-2"}`}>{v.message}</p>
+        <p className={`text-red-500 ${compact ? "text-[10px] mt-1" : "text-[12px] mt-1.5"}`}>{v.message}</p>
       )}
     </>
   );
@@ -378,9 +381,10 @@ function CheckboxGroup({ field, options, value, onChange, disabled, compact }) {
     <div className={compact ? "space-y-1 pt-1" : "space-y-2 pt-1"}>
       <div className={`flex flex-wrap ${compact ? "gap-x-3 gap-y-1" : "gap-x-6 gap-y-3"}`}>
         {options.map((option) => (
-          <label key={option} className={`flex items-center gap-2 ${compact ? "text-[11px]" : "text-sm"}`}>
+          <label key={option} className={`flex items-center gap-2 ${compact ? "text-[11px]" : "text-[13.5px]"}`}>
             <input
               type="checkbox"
+              className="accent-[#caa863]"
               value={option}
               checked={isChecked(option)}
               disabled={disabled}
@@ -422,8 +426,8 @@ function ConsentBlock({ field, value, onChange, disabled, compact }) {
   return (
     <div>
       <label
-        className={`block uppercase font-bold tracking-widest opacity-70 ${
-          compact ? "text-[10px] mb-1" : "text-xs mb-2"
+        className={`block ${
+          compact ? "uppercase font-bold tracking-widest opacity-70 text-[10px] mb-1" : "text-[12.5px] font-medium opacity-80 mb-1.5"
         }`}
       >
         {field.label}
@@ -433,7 +437,7 @@ function ConsentBlock({ field, value, onChange, disabled, compact }) {
       {field.type === "terms" && field.bodyText && (
         <div
           className={`overflow-y-auto whitespace-pre-line rounded-lg border mb-3 ${
-            compact ? "max-h-24 p-2 text-[11px]" : "max-h-64 p-4 text-sm"
+            compact ? "max-h-24 p-2 text-[11px]" : "max-h-48 p-4 text-[13px] leading-relaxed rounded-xl"
           }`}
           style={{ borderColor: theme.inputBorder, backgroundColor: light ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.02)" }}
         >
@@ -441,10 +445,10 @@ function ConsentBlock({ field, value, onChange, disabled, compact }) {
         </div>
       )}
 
-      <label className={`flex items-start gap-2.5 ${compact ? "text-[11px]" : "text-sm"}`}>
+      <label className={`flex items-start gap-2.5 ${compact ? "text-[11px]" : "text-[13.5px]"}`}>
         <input
           type="checkbox"
-          className="mt-1 shrink-0"
+          className="mt-0.75 shrink-0 w-4 h-4 accent-[#caa863]"
           checked={accepted}
           disabled={disabled}
           required={field.required && !disabled}
@@ -456,7 +460,7 @@ function ConsentBlock({ field, value, onChange, disabled, compact }) {
       </label>
 
       {field.helpText && (
-        <p className={`opacity-50 ${compact ? "text-[10px] mt-1" : "text-xs mt-2"}`}>{field.helpText}</p>
+        <p className={`opacity-55 ${compact ? "text-[10px] mt-1" : "text-[12px] mt-1.5"}`}>{field.helpText}</p>
       )}
     </div>
   );
@@ -524,15 +528,15 @@ function GroupBlock({ field, values, onChangeNamed, disabled, compact }) {
   return (
     <fieldset className="min-w-0" disabled={disabled}>
       <legend
-        className={`uppercase font-bold tracking-widest opacity-70 ${
-          compact ? "text-[10px] mb-1" : "text-xs mb-2"
+        className={`${
+          compact ? "uppercase font-bold tracking-widest opacity-70 text-[10px] mb-1" : "text-[13.5px] font-semibold mb-2"
         }`}
       >
         {field.label}
         {children.some((c) => c.required) && <span style={{ color: theme.accentColor }}> *</span>}
       </legend>
 
-      <div className={`grid grid-cols-12 ${compact ? "gap-2" : "gap-x-5 gap-y-4"}`}>
+      <div className={`grid grid-cols-12 ${compact ? "gap-2" : "gap-x-4 gap-y-3"}`}>
         {children.map((child) => (
           <FieldShell key={child.id || child.name} width={child.width}>
             <InputField
@@ -547,7 +551,7 @@ function GroupBlock({ field, values, onChangeNamed, disabled, compact }) {
       </div>
 
       {field.behavior === "indianAddress" && lookupState !== "idle" && (
-        <p className={`mt-2 ${compact ? "text-[10px]" : "text-xs"} opacity-60`}>
+        <p className={`mt-2 ${compact ? "text-[10px]" : "text-[12px]"} opacity-60`}>
           {lookupState === "loading" && "Looking up that PIN code…"}
           {lookupState === "found" && "City and state filled in from the PIN code — edit if needed."}
           {lookupState === "notFound" && "Couldn't look that PIN code up. Please fill in city and state."}
@@ -555,7 +559,7 @@ function GroupBlock({ field, values, onChangeNamed, disabled, compact }) {
       )}
 
       {field.helpText && (
-        <p className={`opacity-50 ${compact ? "text-[10px] mt-1" : "text-xs mt-2"}`}>{field.helpText}</p>
+        <p className={`opacity-55 ${compact ? "text-[10px] mt-1" : "text-[12px] mt-1.5"}`}>{field.helpText}</p>
       )}
     </fieldset>
   );
@@ -571,8 +575,8 @@ function DisplayBlock({ field, compact = false }) {
   if (field.type === "heading") {
     return (
       <h2
-        className={`font-serif font-medium ${compact ? "text-[14px] pt-0.5" : "text-xl pt-2"}`}
-        style={{ color: light ? "inherit" : theme.textColor }}
+        className={`font-serif font-medium ${compact ? "text-[14px] pt-0.5" : "text-[17px] pt-4 mt-1 border-t"}`}
+        style={{ color: light ? "inherit" : theme.textColor, borderColor: light ? "rgba(11,23,32,0.08)" : theme.inputBorder }}
       >
         {field.label}
       </h2>
@@ -587,8 +591,8 @@ function FieldFrame({ label, required, helpText, children, compact = false }) {
   return (
     <div>
       <label
-        className={`block uppercase font-bold tracking-widest opacity-70 ${
-          compact ? "text-[10px] mb-1" : "text-xs mb-2"
+        className={`block ${
+          compact ? "uppercase font-bold tracking-widest opacity-70 text-[10px] mb-1" : "text-[12.5px] font-medium opacity-80 mb-1.5"
         }`}
       >
         {label}
@@ -596,7 +600,7 @@ function FieldFrame({ label, required, helpText, children, compact = false }) {
       </label>
       {children}
       {helpText && (
-        <p className={`opacity-50 ${compact ? "text-[10px] mt-1" : "text-xs mt-2"}`}>{helpText}</p>
+        <p className={`opacity-55 ${compact ? "text-[10px] mt-1" : "text-[12px] mt-1.5"}`}>{helpText}</p>
       )}
     </div>
   );
@@ -606,8 +610,8 @@ function FieldFrame({ label, required, helpText, children, compact = false }) {
 const htmlInputType = (type) => (type === "phone" ? "tel" : type);
 
 const fullInputClass =
-  "w-full bg-[#0F161E] border border-white/10 rounded-lg px-4 py-3.5 text-white " +
-  "focus:outline-none focus:border-[#C19D60] transition-colors disabled:opacity-70";
+  "w-full bg-[#0F161E] border border-white/10 rounded-xl px-3.5 py-2.5 text-[14px] text-white placeholder:text-white/30 " +
+  "focus:outline-none focus:border-[#C19D60] focus:ring-4 focus:ring-[#C19D60]/15 transition disabled:opacity-70";
 
 // Same control at the admin console's scale, for the builder canvas only.
 const compactInputClass =
@@ -616,8 +620,9 @@ const compactInputClass =
 
 // Light-tone twins of the two classes above, for the cream page.
 const fullLightInputClass =
-  "w-full bg-white border border-black/15 rounded-lg px-4 py-3.5 text-[#0b1720] placeholder:text-black/35 " +
-  "focus:outline-none focus:border-[#C19D60] transition-colors disabled:opacity-70";
+  "w-full bg-white border border-black/12 rounded-xl px-3.5 py-2.5 text-[14px] text-[#0b1720] placeholder:text-black/30 " +
+  "shadow-[0_1px_2px_rgba(11,23,32,0.04)] hover:border-black/20 " +
+  "focus:outline-none focus:border-[#caa863] focus:ring-4 focus:ring-[#caa863]/15 transition disabled:opacity-70";
 
 const compactLightInputClass =
   "w-full bg-white border border-black/15 rounded-md px-2.5 py-[5px] text-[12px] text-[#0b1720] placeholder:text-black/35 " +
