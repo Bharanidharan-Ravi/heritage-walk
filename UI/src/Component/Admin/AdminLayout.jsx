@@ -27,6 +27,7 @@ const NAV_ITEMS = [
   { to: "/admin/experiences", label: "Experiences", icon: IconExperiences },
   { to: "/admin/forms", label: "Forms", icon: IconForms },
   { to: "/admin/users", label: "Users & Roles", icon: IconUsers, adminOnly: true },
+  { to: "/admin/settings", label: "Settings", icon: IconSettings, adminOnly: true },
 ];
 
 export default function AdminLayout() {
@@ -226,6 +227,17 @@ function IconUsers({ className }) {
       <path d="M2.5 16c0-2.8 2-4.5 4.5-4.5s4.5 1.7 4.5 4.5" />
       <circle cx="14.5" cy="7" r="2" />
       <path d="M12.8 11.7c1.9.2 3.7 1.7 3.7 4.3" />
+    </svg>
+  );
+}
+
+function IconSettings({ className }) {
+  return (
+    <svg viewBox="0 0 20 20" className={className} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 5.5h8M15 5.5h2M3 10h2M9 10h8M3 14.5h6M13 14.5h4" />
+      <circle cx="13" cy="5.5" r="2" />
+      <circle cx="7" cy="10" r="2" />
+      <circle cx="11" cy="14.5" r="2" />
     </svg>
   );
 }

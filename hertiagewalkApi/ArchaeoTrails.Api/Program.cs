@@ -96,6 +96,7 @@ var bookingOptions = builder.Configuration.GetSection("Bookings").Get<BookingOpt
 // The confirmation email links to the same /booking/{order_id} page Cashfree returns to.
 bookingOptions.BookingUrlTemplate ??= builder.Configuration["Cashfree:ReturnUrl"];
 builder.Services.AddSingleton(bookingOptions);
+builder.Services.AddSingleton<BookingHoldTracker>();
 builder.Services.AddScoped<IPaymentWebhookEventRepository, EfPaymentWebhookEventRepository>();
 builder.Services.AddScoped<IBookingService, BookingService>();
 // Marks unpaid holds Expired (or confirms them if Cashfree says they were paid).

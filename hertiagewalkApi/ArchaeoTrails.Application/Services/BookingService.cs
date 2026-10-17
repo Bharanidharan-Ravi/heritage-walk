@@ -68,6 +68,7 @@ namespace ArchaeoTrails.Application.Services
         private readonly IPaymentSettingsService _paymentSettings;
         private readonly IEmailService _email;
         private readonly BookingOptions _options;
+        private readonly BookingHoldTracker _holdTracker;
 
         public BookingService(
             IExperienceTemplateRepository experiences,
@@ -77,7 +78,8 @@ namespace ArchaeoTrails.Application.Services
             IPaymentGateway gateway,
             IPaymentSettingsService paymentSettings,
             IEmailService email,
-            BookingOptions options)
+            BookingOptions options,
+            BookingHoldTracker holdTracker)
         {
             _experiences = experiences;
             _forms = forms;
@@ -87,6 +89,7 @@ namespace ArchaeoTrails.Application.Services
             _paymentSettings = paymentSettings;
             _email = email;
             _options = options;
+            _holdTracker = holdTracker;
         }
 
         public async Task<BookingResult<CreateBookingResponse>> CreatePendingAsync(CreateBookingRequest request)
@@ -252,6 +255,8 @@ namespace ArchaeoTrails.Application.Services
                 ExpiresAt = expiresAt
             };
             await _submissions.CreateAsync(submission);
+            // Wakes the expiry worker for this hold only (see BookingHoldTracker).
+            _holdTracker.HoldCreated(expiresAt.AddMinutes(Math.Max(0, _options.ExpiryGraceMinutes)));
 
             var order = await _gateway.CreateOrderAsync(new GatewayOrderRequest
             {

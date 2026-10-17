@@ -169,6 +169,13 @@ export const adminApi = {
   // PaymentSettings, only asks the calculator (server-side, decimal-accurate)
   // what a given base amount needs to become. See PricingService on the API.
   getPaymentSettings: (token) => request("/api/admin/payment-settings", { token }),
+  // Admin → Settings page only. The API expects every field (nothing is
+  // optional), so always send the full settings object.
+  updatePaymentSettings: (token, payload) =>
+    request("/api/admin/payment-settings", { method: "PUT", body: payload, token }),
+  // Breakdown for a base amount using the SAVED settings (not unsaved edits).
+  previewPrice: (token, baseAmount) =>
+    request(`/api/admin/payment-settings/preview?baseAmount=${encodeURIComponent(baseAmount)}`, { token }),
   calculatePrice: (token, { baseAmount, customerAmount }) =>
     request("/api/admin/payment-settings/calculate-price", {
       method: "POST",

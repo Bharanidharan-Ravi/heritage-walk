@@ -15,4 +15,5 @@ export const qk = {
   users: () => ["users"],
   forms: () => ["forms"],
   formSubmissions: (formId) => ["formSubmissions", formId],
+  paymentSettings: () => ["paymentSettings"],
 };

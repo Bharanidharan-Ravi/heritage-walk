@@ -80,4 +80,39 @@ export const adminConfig = {
     credentialsHeading: "Change username / password",
     credentialsHint: "Leave a field blank to keep it unchanged.",
   },
+
+  // Settings page (Admin only) — edits the single PaymentSettings row on the
+  // API. Option `value`s must match the API enum names
+  // (Domain/Enums/PaymentEnvironment.cs, PaymentPricingMode.cs).
+  settings: {
+    title: "Settings",
+    paymentHeading: "Payment & fees",
+    paymentHint:
+      "Changes apply to prices calculated from now on. Prices already saved on experiences are not changed — re-run the price calculator on an experience to update it.",
+    platformFeeLabel: "Platform fee %",
+    platformFeeHint: "ArchaeoTrails' own share, as a percent of what the customer pays.",
+    gatewayFeeLabel: "Cashfree fee %",
+    gatewayFeeHint: "Cashfree's standard transaction fee, as a percent of what the customer pays.",
+    gatewayGstLabel: "GST on Cashfree fee %",
+    gatewayGstHint: "GST charged on Cashfree's fee (18% in India).",
+    environmentLabel: "Cashfree environment",
+    productionConfirm:
+      "Switch Cashfree to PRODUCTION? Customers will be charged real money using the live keys.",
+    enabledLabel: "Online payments enabled",
+    pricingModeLabel: "Pricing mode",
+    currencyLabel: "Currency",
+    environmentOptions: [
+      { value: "Sandbox", label: "Sandbox (test payments)" },
+      { value: "Production", label: "Production (live payments)" },
+    ],
+    pricingModeOptions: [
+      { value: "CurrentOffer", label: "Current offer", hint: "Cashfree fee waived — only GST on the standard fee is charged." },
+      { value: "Standard", label: "Standard", hint: "Full Cashfree fee plus GST on it." },
+      { value: "Custom", label: "Custom", hint: "The percentages above, applied exactly as entered." },
+    ],
+    previewHeading: "Preview (saved settings)",
+    previewBaseLabel: "Amount you want to receive (₹)",
+    previewDefaultBase: 1000,
+    saved: "Settings saved.",
+  },
 };

@@ -27,6 +27,7 @@ import AdminFormBuilder from './Component/pages/admin/AdminFormBuilder';
 import AdminFormSubmissions from './Component/pages/admin/AdminFormSubmissions';
 import AdminExperiences from './Component/pages/admin/AdminExperiences';
 import AdminExperienceBuilder from './Component/pages/admin/AdminExperienceBuilder';
+import AdminSettings from './Component/pages/admin/AdminSettings';
 import { adminConfig } from './Component/Config/admin.config';
 
 // You can create basic placeholder components for these to avoid errors
@@ -74,6 +75,7 @@ function App() {
             <Route path="experiences/:id/edit" element={<AdminExperienceBuilder />} />
             <Route element={<RequireRole roles={[adminConfig.roles.ADMIN]} />}>
               <Route path="users" element={<AdminUsers />} />
+              <Route path="settings" element={<AdminSettings />} />
             </Route>
           </Route>
         </Route>
