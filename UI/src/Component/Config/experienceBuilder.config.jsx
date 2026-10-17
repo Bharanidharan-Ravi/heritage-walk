@@ -71,6 +71,9 @@ export const experienceBuilderConfig = {
     experienceDateHelp: "The day Group bookings run on.",
     privateDatesHelp: "Private dates are generated from this Start – End range.",
     dateNotSetSummary: "Not set",
+    // Employees can mark an experience as paid but never see/set the amount.
+    pricePendingSummary: "Paid — price set by Admin",
+    pricePendingHelp: "An Admin sets the price when approving this experience.",
     endDateLabel: "End date",
     bookingEndDateLabel: "Booking end date",
   },

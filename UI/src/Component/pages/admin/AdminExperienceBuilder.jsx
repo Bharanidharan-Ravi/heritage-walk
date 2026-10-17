@@ -5,13 +5,13 @@
 // useExperienceBuilder hook (see its header for why). Handles both create
 // (/admin/experiences/new/:type) and edit (/admin/experiences/:id/edit).
 //
-// Price/currency/capacity/registration-type/slots are Admin-only, saved via
-// their OWN endpoint (PUT /api/experiences/{id}/payment) instead of the
-// Save-draft/Submit actions above — same split as the Experiences list
-// page's "Set Payment" modal, just relocated onto the canvas's cart widget
-// (see the `isAdmin` gate on ExperienceCanvas/ExperienceBlockSettings) so an
-// Admin building an experience doesn't have to leave the Builder to price it.
-// An Employee sees the exact same non-interactive cart skeleton as before.
+// Payment/capacity/registration-type/slots are saved via their OWN endpoint
+// (PUT /api/experiences/{id}/payment) instead of the Save-draft/Submit
+// actions above — same split as the Experiences list page's "Set Payment"
+// modal, just relocated onto the canvas's cart widget. Employees can use the
+// cart editor and the registration-form screen too, but only an Admin sees
+// or sets the amounts (price/private price/currency) — see `canEditPricing`;
+// the API ignores amounts sent by an Employee.
 
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -263,11 +263,16 @@ export default function AdminExperienceBuilder() {
       // cart's own settings so there's a single payment config, not two.
       let formId = linkedFormTemplateId;
       if (regForm.fields.length > 0) {
+        // A linked form takes its payment settings from the experience (see
+        // FormsController.GetForm), so an Employee — who can't set a price —
+        // saves it as free rather than tripping the form's "paid needs a
+        // price" check.
+        const formPaid = isAdmin && requiresPayment;
         const formPayload = {
           ...regForm.toCreateRequest(),
           title: `${builder.title.trim() || typeLabel} — Registration`,
-          requiresPayment,
-          price: requiresPayment ? groupAmount : 0,
+          requiresPayment: formPaid,
+          price: formPaid ? groupAmount : 0,
           currency,
         };
         if (formId) {
@@ -347,24 +352,22 @@ export default function AdminExperienceBuilder() {
         )}
         {saveError && <p className={`mb-3 ${adminUi.text.body}`} style={{ color: theme.dangerColor }}>{saveError}</p>}
 
-        {isAdmin && (
-          <div className="flex gap-1.5 mb-3">
-            {[["page", "1 · Page"], ["register", "2 · Registration form"]].map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setStep(key)}
-                className={adminUi.control.btnGhost}
-                style={{
-                  borderColor: step === key ? theme.accentColor : theme.borderColor,
-                  color: step === key ? theme.accentColor : theme.mutedColor,
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="flex gap-1.5 mb-3">
+          {[["page", "1 · Page"], ["register", "2 · Registration form"]].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setStep(key)}
+              className={adminUi.control.btnGhost}
+              style={{
+                borderColor: step === key ? theme.accentColor : theme.borderColor,
+                color: step === key ? theme.accentColor : theme.mutedColor,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Palette, canvas, and settings each get their OWN scrollbar on
@@ -406,7 +409,7 @@ export default function AdminExperienceBuilder() {
             drag={drag}
             onDragEnd={() => setDrag(null)}
             onDragStartMove={(index) => setDrag({ kind: "move", index })}
-            isAdmin={isAdmin}
+            canEditPricing={isAdmin}
             requiresPayment={requiresPayment}
             price={price}
             privatePrice={privatePrice}
@@ -433,7 +436,7 @@ export default function AdminExperienceBuilder() {
             onStartDateChange={builder.setStartDate}
             onEndDateChange={builder.setEndDate}
             onBookingEndDateChange={builder.setBookingEndDate}
-            isAdmin={isAdmin}
+            canEditPricing={isAdmin}
             hasExperienceId={Boolean(experienceId)}
             token={token}
             requiresPayment={requiresPayment}
@@ -460,14 +463,13 @@ export default function AdminExperienceBuilder() {
         </div>
       </div>
 
-      {/* Registration form — Admin-only (setExperiencePayment, which links it,
-          is an Admin-only endpoint). Built with the SAME palette/canvas/
+      {/* Registration form — Admins and Employees (an Employee's save links
+          it via setExperiencePayment on their own draft). Built with the SAME palette/canvas/
           settings trio the standalone Form Builder uses, just pointed at
           `regForm`'s state instead of a page of its own — see handleSaveCart
           for how it's turned into a FormTemplate on save. Sits below the
           fixed-height builder area above (which owns its own internal
           scroll), so it scrolls into view with the rest of the page. */}
-      {isAdmin && (
         <div className={`${step === "register" ? "" : "hidden"} flex-1 min-h-0 flex flex-col`}>
           <p className={`${adminUi.text.body} mb-2 shrink-0`} style={{ color: theme.mutedColor }}>
             Registration form — drag in the fields visitors fill out. Saved with “Save cart settings” on the Page screen.
@@ -522,6 +524,7 @@ export default function AdminExperienceBuilder() {
               <CartSlot
                 selected={regCartSelected}
                 onClick={() => { regForm.setSelectedId(null); setRegCartSelected(true); }}
+                canEditPricing={isAdmin}
                 requiresPayment={requiresPayment}
                 price={price}
                 privatePrice={privatePrice}
@@ -541,7 +544,7 @@ export default function AdminExperienceBuilder() {
                 experienceType={experienceType}
                 block={null}
                 selectedId={CART_BLOCK_ID}
-                isAdmin={isAdmin}
+                canEditPricing={isAdmin}
                 hasExperienceId={Boolean(experienceId)}
                 token={token}
                 startDate={builder.startDate}
@@ -581,7 +584,6 @@ export default function AdminExperienceBuilder() {
             </div>
           </div>
         </div>
-      )}
 
       {showPreview && (
         <ExperiencePreviewModal

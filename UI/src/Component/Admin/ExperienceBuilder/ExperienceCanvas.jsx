@@ -16,9 +16,9 @@
 //     placement there), reorderable via the same native-HTML5-drag mechanics
 //     as before.
 //
-// The cart itself isn't a content block (price/capacity aren't set until
-// Admin approval — see AdminExperienceBuilder.jsx), so its "skeleton" here is
-// a static, non-interactive placeholder, not a real BookingCard.
+// The cart itself isn't a content block (it's saved through its own payment
+// endpoint — see AdminExperienceBuilder.jsx), so its "skeleton" here is a
+// read-only summary, not a real BookingCard.
 
 import React, { useLayoutEffect, useRef, useState } from "react";
 import { experienceBuilderConfig, blockMetaFor } from "../../Config/experienceBuilder.config";
@@ -58,7 +58,7 @@ export default function ExperienceCanvas({
   drag,
   onDragEnd,
   onDragStartMove,
-  isAdmin,
+  canEditPricing,
   requiresPayment,
   price,
   privatePrice,
@@ -343,29 +343,24 @@ export default function ExperienceCanvas({
             </div>
           </div>
 
-          {/* RIGHT: cart skeleton — an Employee gets the same static,
-              non-interactive placeholder as always (price/capacity aren't
-              theirs to set); an Admin gets a live summary that's selectable,
-              same as any other slot, opening the full editor in the sidebar. */}
+          {/* RIGHT: cart — a live summary that's selectable, same as any
+              other slot, opening the full editor in the sidebar. Amounts
+              are only shown to an Admin (`canEditPricing`). */}
           <div className="lg:w-1/3 w-full">
-            {isAdmin ? (
-              <Slot selected={selectedId === CART_BLOCK_ID} onClick={() => onSelect(CART_BLOCK_ID)}>
-                <CartSkeleton
-                  requiresPayment={requiresPayment}
-                  price={price}
-                  privatePrice={privatePrice}
-                  currency={currency}
-                  capacityTotal={capacityTotal}
-                  registrationType={registrationType}
-                  privateSlots={privateSlots}
-                  privateMinPeople={privateMinPeople}
-                  startDate={startDate}
-                  editable
-                />
-              </Slot>
-            ) : (
-              <CartSkeleton />
-            )}
+            <Slot selected={selectedId === CART_BLOCK_ID} onClick={() => onSelect(CART_BLOCK_ID)}>
+              <CartSkeleton
+                canEditPricing={canEditPricing}
+                requiresPayment={requiresPayment}
+                price={price}
+                privatePrice={privatePrice}
+                currency={currency}
+                capacityTotal={capacityTotal}
+                registrationType={registrationType}
+                privateSlots={privateSlots}
+                privateMinPeople={privateMinPeople}
+                startDate={startDate}
+              />
+            </Slot>
           </div>
         </div>
       </div>
@@ -628,36 +623,12 @@ function CardButton({ children, label, onClick, disabled, danger }) {
   );
 }
 
-/** Static, non-interactive stand-in for the real BookingCard shown to an
- *  Employee — price/capacity/registration type aren't theirs to set, so
- *  there's nothing real to show yet; this just marks the spot so the
- *  canvas's proportions match the live page.
- *
- *  `editable` swaps that placeholder for an Admin-facing live summary of
- *  whatever's currently configured (still read-only HERE — clicking it
- *  selects CART_BLOCK_ID and the actual editing happens in the sidebar's
- *  CartEditor, same as every other slot on this canvas). */
-function CartSkeleton({ editable, requiresPayment, price, privatePrice, currency, capacityTotal, registrationType, privateSlots, privateMinPeople, startDate }) {
-  if (!editable) {
-    return (
-      <div className="lg:sticky lg:top-4 rounded-3xl p-6 border-2 border-dashed" style={{ borderColor: pageTheme.borderColor, backgroundColor: pageTheme.cardBackground }}>
-        <span className="text-[10px] uppercase tracking-widest block mb-3 font-bold" style={{ color: pageTheme.mutedColor }}>
-          {builderContent.cartSkeletonTitle}
-        </span>
-        <div className="grid grid-cols-2 gap-2 mb-3 pointer-events-none opacity-50">
-          <div className="py-2 rounded-lg text-xs font-bold uppercase tracking-widest text-center border" style={{ borderColor: pageTheme.borderColor, color: pageTheme.mutedColor }}>
-            {pageContent.groupLabel}
-          </div>
-          <div className="py-2 rounded-lg text-xs font-bold uppercase tracking-widest text-center border" style={{ borderColor: pageTheme.borderColor, color: pageTheme.mutedColor }}>
-            {pageContent.privateLabel}
-          </div>
-        </div>
-        <div className="h-10 rounded-xl mb-4 opacity-30" style={{ backgroundColor: pageTheme.borderColor }} />
-        <p className="text-xs" style={{ color: pageTheme.mutedColor }}>{builderContent.cartSkeletonNote}</p>
-      </div>
-    );
-  }
-
+/** Live summary of whatever's currently configured on the cart (read-only
+ *  HERE — clicking it selects CART_BLOCK_ID and the actual editing happens
+ *  in the sidebar's CartEditor, same as every other slot on this canvas).
+ *  Without `canEditPricing` (an Employee) amounts are hidden: a paid
+ *  experience just reads "Paid — price set by Admin". */
+function CartSkeleton({ canEditPricing, requiresPayment, price, privatePrice, currency, capacityTotal, registrationType, privateSlots, privateMinPeople, startDate }) {
   const registrationLabel = { Group: "Group only", Private: "Private only", Both: "Group + Private" }[registrationType] || registrationType;
 
   return (
@@ -667,8 +638,9 @@ function CartSkeleton({ editable, requiresPayment, price, privatePrice, currency
       </span>
       <div className="space-y-2.5">
         {!requiresPayment && <SummaryRow label="Price" value="Free" />}
-        {requiresPayment && registrationType !== "Private" && <SummaryRow label="Public price" value={`${currency} ${price || 0}`} />}
-        {requiresPayment && registrationType !== "Group" && <SummaryRow label="Private price" value={`${currency} ${privatePrice || price || 0}`} />}
+        {requiresPayment && !canEditPricing && <SummaryRow label="Price" value={builderContent.pricePendingSummary} />}
+        {requiresPayment && canEditPricing && registrationType !== "Private" && <SummaryRow label="Public price" value={`${currency} ${price || 0}`} />}
+        {requiresPayment && canEditPricing && registrationType !== "Group" && <SummaryRow label="Private price" value={`${currency} ${privatePrice || price || 0}`} />}
         <SummaryRow label="Registration" value={registrationLabel} />
         {registrationType !== "Private" && <SummaryRow label={builderContent.experienceDateLabel} value={startDate || builderContent.dateNotSetSummary} />}
         {registrationType !== "Group" && <SummaryRow label="Private dates" value={privateSlots?.length ? `${privateSlots.length} date${privateSlots.length === 1 ? "" : "s"}` : "None set yet"} />}
@@ -684,7 +656,7 @@ function CartSkeleton({ editable, requiresPayment, price, privatePrice, currency
 export function CartSlot({ selected, onClick, ...summary }) {
   return (
     <Slot selected={selected} onClick={onClick}>
-      <CartSkeleton editable {...summary} />
+      <CartSkeleton {...summary} />
     </Slot>
   );
 }

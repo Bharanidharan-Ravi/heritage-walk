@@ -51,11 +51,12 @@ const { text, control } = adminUi;
 // come through as `selectedId` sentinels instead. Title has no block object
 // of its own but is still edited from here too (see ExperienceCanvas's
 // inline title editor); the cart (registration type, schedule, slots,
-// payment) is Admin-only and edited ONLY here — CartEditor below.
+// payment) is edited ONLY here — CartEditor below. Amounts are Admin-only.
 export default function ExperienceBlockSettings({
   experienceType, block, onChange, onRemove,
   selectedId, title, onTitleChange,
   startDate, endDate, bookingEndDate, onStartDateChange, onEndDateChange, onBookingEndDateChange,
+  canEditPricing,
   hasExperienceId,
   token,
   requiresPayment, onRequiresPaymentChange,
@@ -82,6 +83,7 @@ export default function ExperienceBlockSettings({
   if (selectedId === CART_BLOCK_ID) {
     return (
       <CartEditor
+        canEditPricing={canEditPricing}
         hasExperienceId={hasExperienceId}
         token={token}
         requiresPayment={requiresPayment} onRequiresPaymentChange={onRequiresPaymentChange}
@@ -132,13 +134,16 @@ export default function ExperienceBlockSettings({
   );
 }
 
-/** Admin-only cart/payment/schedule editor — the canvas's cart widget,
- *  clicked like any other slot. Payment/capacity/registration-type/slots go
- *  through their OWN endpoint (PUT .../payment); Start/End/Booking-end date
- *  go through the regular draft save — the parent's onSave (handleSaveCart)
- *  fires both under this one button, creating the draft first if it doesn't
- *  have an id yet (`hasExperienceId` false), same request Save Draft sends. */
+/** Cart/payment/schedule editor — the canvas's cart widget, clicked like any
+ *  other slot. Payment/capacity/registration-type/slots go through their OWN
+ *  endpoint (PUT .../payment); Start/End/Booking-end date go through the
+ *  regular draft save — the parent's onSave (handleSaveCart) fires both under
+ *  this one button, creating the draft first if it doesn't have an id yet
+ *  (`hasExperienceId` false), same request Save Draft sends. Without
+ *  `canEditPricing` (an Employee) only the "Requires payment" checkbox shows —
+ *  currency, prices and the calculator are hidden. */
 function CartEditor({
+  canEditPricing,
   hasExperienceId,
   token,
   requiresPayment, onRequiresPaymentChange,
@@ -215,6 +220,7 @@ function CartEditor({
   // Live, client-side re-check against the last-fetched minimum whenever the
   // admin edits Price by hand — no extra round-trip needed for this part.
   const belowMinimum = calc && calcPrice !== "" && Number(calcPrice) < calc.minimumCustomerAmount;
+  const showPricing = requiresPayment && canEditPricing;
 
   return (
     <aside className={`rounded-lg border ${adminUi.pad.panel} h-fit lg:sticky lg:top-4 ${adminUi.stack.sm}`} style={{ backgroundColor: theme.panelBackground, borderColor: theme.borderColor }}>
@@ -224,10 +230,11 @@ function CartEditor({
         <input type="checkbox" checked={requiresPayment} onChange={(e) => onRequiresPaymentChange(e.target.checked)} className={control.checkbox} />
         <span className={text.body}>Requires payment</span>
       </label>
+      {requiresPayment && !canEditPricing && <p className={control.help}>{content.pricePendingHelp}</p>}
 
       {/* One price per registration option on offer — Public (Group) and/or
           Private. Registration type is chosen further down; these follow it. */}
-      {requiresPayment && (
+      {showPricing && (
         <>
           <Labelled label="Currency">
             <input value={currency} onChange={(e) => onCurrencyChange(e.target.value)} className={`${control.inputSm} w-16`} />
@@ -245,13 +252,13 @@ function CartEditor({
         </>
       )}
 
-      {requiresPayment && belowMinimum && (
+      {showPricing && belowMinimum && (
         <p className={text.body} style={{ color: theme.dangerColor }}>
           Customer price cannot be lower than the minimum required price of ₹{formatINR(calc.minimumCustomerAmount)}.
         </p>
       )}
 
-      {requiresPayment && (
+      {showPricing && (
         <div className={`${adminUi.stack.xs} rounded-md border`} style={{ borderColor: theme.borderColor, padding: 8 }}>
           <p className={text.micro} style={{ color: theme.mutedColor }}>Price calculator (optional)</p>
           <p className={control.help}>
@@ -373,8 +380,8 @@ function CartEditor({
       <button
         type="button"
         onClick={onSave}
-        disabled={saving || belowMinimum}
-        title={belowMinimum ? "Raise the price to at least the minimum shown above, or clear the calculator's base amount." : undefined}
+        disabled={saving || (showPricing && belowMinimum)}
+        title={showPricing && belowMinimum ? "Raise the price to at least the minimum shown above, or clear the calculator's base amount." : undefined}
         className={control.btnPrimary}
         style={{ backgroundColor: theme.accentColor, color: theme.pageBackground }}
       >

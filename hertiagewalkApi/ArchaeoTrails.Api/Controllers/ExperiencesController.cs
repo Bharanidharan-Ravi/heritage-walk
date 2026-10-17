@@ -393,15 +393,28 @@ namespace ArchaeoTrails.Api.Controllers
             return Ok(new { status = "success" });
         }
 
-        // PUT /api/experiences/{id}/payment  (Admin only)
+        // PUT /api/experiences/{id}/payment
+        // Admins set everything. Employees may set registration type, slots,
+        // capacity, the registration form and whether payment is required —
+        // on their own Draft/Changes Requested rows only (same rule as Update) —
+        // but never the amounts: Price/PrivatePrice/Currency from an Employee
+        // are ignored and the stored values kept. Publish still refuses a paid
+        // experience without a price, so an Admin must price it before it goes live.
         [HttpPut("{id:guid}/payment")]
-        [Authorize(Roles = Roles.Admin)]
         public async Task<IActionResult> SetPayment(Guid id, [FromBody] SetExperiencePaymentRequest request)
         {
             var experience = await _experiences.GetByIdAsync(id);
             if (experience is null) return NotFound();
 
-            if (request.RequiresPayment && request.Price <= 0)
+            var isAdmin = User.IsInRole(Roles.Admin);
+            var isOwnerEditableStatus = experience.CreatedByUserId == GetUserId() &&
+                (experience.Status == ExperienceStatus.Draft || experience.Status == ExperienceStatus.ChangesRequested);
+            if (!isAdmin && !isOwnerEditableStatus)
+            {
+                return Forbid();
+            }
+
+            if (isAdmin && request.RequiresPayment && request.Price <= 0)
             {
                 return BadRequest(new { status = "error", message = "A paid experience needs a price above zero." });
             }
@@ -424,7 +437,7 @@ namespace ArchaeoTrails.Api.Controllers
             {
                 return BadRequest(new { status = "error", message = "Add at least one bookable date for Private registration." });
             }
-            if (offersPrivate && request.RequiresPayment && request.PrivatePrice is <= 0)
+            if (isAdmin && offersPrivate && request.RequiresPayment && request.PrivatePrice is <= 0)
             {
                 return BadRequest(new { status = "error", message = "Private price must be above zero, or left empty to use the normal price." });
             }
@@ -434,9 +447,21 @@ namespace ArchaeoTrails.Api.Controllers
             }
 
             experience.RequiresPayment = request.RequiresPayment;
-            experience.Price = request.RequiresPayment ? request.Price : 0m;
-            experience.PrivatePrice = request.RequiresPayment && offersPrivate ? request.PrivatePrice : null;
-            experience.Currency = request.Currency;
+            if (isAdmin)
+            {
+                experience.Price = request.RequiresPayment ? request.Price : 0m;
+                experience.PrivatePrice = request.RequiresPayment && offersPrivate ? request.PrivatePrice : null;
+                experience.Currency = request.Currency;
+            }
+            else if (!request.RequiresPayment)
+            {
+                experience.Price = 0m;
+                experience.PrivatePrice = null;
+            }
+            else if (!offersPrivate)
+            {
+                experience.PrivatePrice = null;
+            }
             experience.CapacityTotal = request.CapacityTotal;
             // Re-seed the atomic counter whenever capacity is (re)configured.
             experience.CapacityRemaining = request.CapacityTotal;

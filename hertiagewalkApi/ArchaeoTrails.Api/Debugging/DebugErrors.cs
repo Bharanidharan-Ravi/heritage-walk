@@ -65,7 +65,9 @@ namespace ArchaeoTrails.Api.Debugging
                 {
                     status = 403,
                     error = "Forbidden",
-                    reason = "Authenticated, but the account's role is not allowed on this endpoint.",
+                    // Also raised by a controller's own Forbid() (e.g. an Employee
+                    // editing someone else's experience), not only by [Authorize(Roles)].
+                    reason = "Authenticated, but this account is not allowed to do this — either its role is not allowed on this endpoint, or the action refused it (e.g. not the owner, or the item is no longer editable).",
                     user = user.Identity?.Name,
                     roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value),
                     path = context.HttpContext.Request.Path.Value
