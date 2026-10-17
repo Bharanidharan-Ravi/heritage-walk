@@ -30,7 +30,7 @@ importers:
         specifier: ^5.102.8
         version: 5.104.1(react@19.2.0)
       qrcode:
-        specifier: 1.5.4
+        specifier: ^1.5.4
         version: 1.5.4
       react:
         specifier: ^19.2.0
