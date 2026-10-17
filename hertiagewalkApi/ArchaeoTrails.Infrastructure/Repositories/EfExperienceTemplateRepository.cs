@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using ArchaeoTrails.Application.Interfaces;
+using ArchaeoTrails.Application.Services;
 using ArchaeoTrails.Domain.Entities;
 using ArchaeoTrails.Domain.Enums;
 using ArchaeoTrails.Infrastructure.Data;
@@ -13,10 +14,12 @@ namespace ArchaeoTrails.Infrastructure.Repositories
     public class EfExperienceTemplateRepository : IExperienceTemplateRepository
     {
         private readonly AppDbContext _db;
+        private readonly PublicExperienceListCache _publicListCache;
 
-        public EfExperienceTemplateRepository(AppDbContext db)
+        public EfExperienceTemplateRepository(AppDbContext db, PublicExperienceListCache publicListCache)
         {
             _db = db;
+            _publicListCache = publicListCache;
         }
 
         public Task<ExperienceTemplate?> GetByIdAsync(Guid id) =>
@@ -29,6 +32,7 @@ namespace ArchaeoTrails.Infrastructure.Repositories
         {
             _db.ExperienceTemplates.Add(experience);
             await _db.SaveChangesAsync();
+            _publicListCache.Invalidate();
             return experience;
         }
 
@@ -37,6 +41,7 @@ namespace ArchaeoTrails.Infrastructure.Repositories
             experience.UpdatedAt = DateTime.UtcNow;
             _db.ExperienceTemplates.Update(experience);
             await _db.SaveChangesAsync();
+            _publicListCache.Invalidate();
         }
 
         public async Task<IReadOnlySet<Guid>> GetLinkedFormTemplateIdsAsync()

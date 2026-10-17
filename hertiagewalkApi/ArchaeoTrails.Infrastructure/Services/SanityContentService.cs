@@ -192,7 +192,10 @@ namespace ArchaeoTrails.Infrastructure.Services
         {
             var projectId = _configuration["Sanity:ProjectId"];
             var dataset = _configuration["Sanity:Dataset"];
-            var token = _configuration["Sanity:WriteToken"];
+            // Trim whitespace/quotes — a token pasted into the Azure portal with a
+            // trailing space or wrapping quotes is rejected by Sanity as
+            // 401 "Session not found".
+            var token = _configuration["Sanity:WriteToken"]?.Trim().Trim('"', '\'');
 
             if (string.IsNullOrWhiteSpace(token) || token == "REPLACE_ME" ||
                 string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(dataset))

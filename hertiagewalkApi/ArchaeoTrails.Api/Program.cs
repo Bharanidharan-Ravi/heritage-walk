@@ -122,6 +122,8 @@ builder.Services.AddRateLimiter(options =>
 // see SanityContentService for the dry-scaffold behaviour until a real token
 // is added via dotnet user-secrets (dev) or Azure App Service config (prod).
 builder.Services.AddScoped<IExperienceTemplateRepository, EfExperienceTemplateRepository>();
+// Keeps home-page visitors off Azure SQL so serverless can auto-pause.
+builder.Services.AddSingleton<PublicExperienceListCache>();
 // Typed HttpClient (not plain AddScoped) — SanityContentService.UploadImageAssetAsync
 // makes real outbound calls to Sanity's asset API once Sanity:WriteToken is set.
 builder.Services.AddHttpClient<ISanityContentService, SanityContentService>();

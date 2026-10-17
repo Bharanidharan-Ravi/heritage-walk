@@ -40,6 +40,7 @@ namespace ArchaeoTrails.Api.Controllers
         private readonly ISanityContentService _sanity;
         private readonly IExperienceEventPublisher _events;
         private readonly IFormSubmissionRepository _formSubmissions;
+        private readonly PublicExperienceListCache _publicListCache;
 
         public ExperiencesController(
             IExperienceTemplateRepository experiences,
@@ -47,9 +48,11 @@ namespace ArchaeoTrails.Api.Controllers
             IAuthService authService,
             ISanityContentService sanity,
             IExperienceEventPublisher events,
-            IFormSubmissionRepository formSubmissions)
+            IFormSubmissionRepository formSubmissions,
+            PublicExperienceListCache publicListCache)
         {
             _formSubmissions = formSubmissions;
+            _publicListCache = publicListCache;
             _experiences = experiences;
             _formTemplates = formTemplates;
             _authService = authService;
@@ -154,6 +157,20 @@ namespace ArchaeoTrails.Api.Controllers
                 IsTest = IsTestSite
             };
 
+            // Served from memory so home-page visitors don't wake Azure SQL —
+            // see PublicExperienceListCache. Searches aren't cached (free text
+            // would make the key space unbounded).
+            var cacheKey = string.IsNullOrWhiteSpace(search)
+                ? $"{query.IsTest}|{parsedType}|{query.Page}|{query.PageSize}"
+                : null;
+            var now = DateTime.UtcNow;
+            if (cacheKey is not null &&
+                _publicListCache.TryGet<PagedResult<PublicExperienceListItemDto>>(cacheKey, now, out var cached))
+            {
+                return Ok(cached);
+            }
+            var cacheVersion = _publicListCache.Version;
+
             var result = await _experiences.QueryAsync(query);
             var items = result.Items.Select(e => new PublicExperienceListItemDto
             {
@@ -168,13 +185,18 @@ namespace ArchaeoTrails.Api.Controllers
                 EndDate = e.EndDate
             }).ToList();
 
-            return Ok(new PagedResult<PublicExperienceListItemDto>
+            var response = new PagedResult<PublicExperienceListItemDto>
             {
                 Items = items,
                 TotalCount = result.TotalCount,
                 Page = query.Page,
                 PageSize = query.PageSize
-            });
+            };
+            if (cacheKey is not null)
+            {
+                _publicListCache.Set(cacheKey, response, cacheVersion, now);
+            }
+            return Ok(response);
         }
 
         // GET /api/experiences/public/{id}
