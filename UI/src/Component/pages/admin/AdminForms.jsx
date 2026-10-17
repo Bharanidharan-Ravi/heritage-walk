@@ -31,6 +31,9 @@ export default function AdminForms() {
     enabled: !!token,
   });
 
+  // Derived from the list so the panel closes if the form is deactivated.
+  const sharingForm = forms.find((f) => f.slug === sharingSlug && f.isActive);
+
   const handleToggleActive = async (id, isActive) => {
     try {
       await adminApi.updateFormStatus(token, id, !isActive);
@@ -108,13 +111,16 @@ export default function AdminForms() {
                   <td className={table.td}>{f.submissionCount}</td>
                   <td className={table.td}>
                     <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => setSharingSlug(sharingSlug === f.slug ? null : f.slug)}
-                        className={control.btnLink}
-                        style={{ color: theme.accentColor }}
-                      >
-                        {sharingSlug === f.slug ? "Hide share" : "Share"}
-                      </button>
+                      {/* Inactive forms reject submissions, so there's nothing to share. */}
+                      {f.isActive && (
+                        <button
+                          onClick={() => setSharingSlug(sharingSlug === f.slug ? null : f.slug)}
+                          className={control.btnLink}
+                          style={{ color: theme.accentColor }}
+                        >
+                          {sharingSlug === f.slug ? "Hide share" : "Share / QR"}
+                        </button>
+                      )}
                       <Link
                         to={`/admin/forms/${f.id}/submissions`}
                         className={control.btnLink}
@@ -131,9 +137,9 @@ export default function AdminForms() {
         </div>
       )}
 
-      {sharingSlug && (
+      {sharingForm && (
         <div className="mt-4">
-          <FormShare slug={sharingSlug} compact />
+          <FormShare slug={sharingForm.slug} title={sharingForm.title} compact />
         </div>
       )}
     </div>

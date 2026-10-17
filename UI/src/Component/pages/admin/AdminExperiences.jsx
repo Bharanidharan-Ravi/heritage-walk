@@ -25,6 +25,8 @@ import { adminApi } from "../../Admin/adminApi";
 import { adminConfig } from "../../Config/admin.config";
 import { adminUi } from "../../Config/adminUi.config";
 import CreateExperienceModal from "../../Admin/CreateExperienceModal";
+import FormShare from "../../Sections/FormShare";
+import { formConfig } from "../../Config/form.config";
 import { qk } from "../../../queryKeys";
 
 const TABS = [
@@ -119,6 +121,7 @@ export default function AdminExperiences() {
   const [paymentTarget, setPaymentTarget] = useState(null);
   const [changesTarget, setChangesTarget] = useState(null);
   const [cloneTarget, setCloneTarget] = useState(null);
+  const [shareTarget, setShareTarget] = useState(null);
   const [rowBusyId, setRowBusyId] = useState(null);
   const [actionError, setActionError] = useState("");
 
@@ -361,6 +364,7 @@ export default function AdminExperiences() {
                   onView={() => navigate(row.status === "Published" ? `/experiences/${row.id}` : `/admin/experiences/${row.id}/edit`)}
                   onEdit={() => navigate(`/admin/experiences/${row.id}/edit`)}
                   onClone={() => setCloneTarget(row)}
+                  onShare={() => setShareTarget(row)}
                   onBookings={() => navigate(`/admin/forms/${row.linkedFormTemplateId}/submissions`)}
                   onSubmit={() => runRowAction(row.id, () => adminApi.submitExperience(token, row.id), "Failed to submit for approval.")}
                   onApprove={() => runRowAction(row.id, () => adminApi.approveExperience(token, row.id), "Failed to approve experience.")}
@@ -425,13 +429,14 @@ export default function AdminExperiences() {
           onSave={(title) => cloneMutation.mutate({ id: cloneTarget.id, title })}
         />
       )}
+      {shareTarget && <ShareModal row={shareTarget} onClose={() => setShareTarget(null)} />}
     </div>
   );
 }
 
 function ExperienceRow({
   row, serial, selected, onToggle, isAdmin, userId, busy,
-  onView, onEdit, onClone, onBookings, onSubmit, onApprove, onRequestChanges, onSetPayment, onPublish, onClose,
+  onView, onEdit, onClone, onShare, onBookings, onSubmit, onApprove, onRequestChanges, onSetPayment, onPublish, onClose,
 }) {
   const { theme } = adminConfig;
   const { control, table } = adminUi;
@@ -447,6 +452,8 @@ function ExperienceRow({
   actions.push({ key: "view", label: "View", onClick: onView });
   if (canEdit) actions.push({ key: "edit", label: "Edit", onClick: onEdit });
   actions.push({ key: "clone", label: "Clone", onClick: onClone });
+  // Only live experiences have a public page worth sharing.
+  if (row.status === "Published" && !ended) actions.push({ key: "share", label: "Share / QR", onClick: onShare });
   // Registration forms no longer appear on the Forms page, so their
   // submissions are reached from the experience itself.
   if (row.linkedFormTemplateId) actions.push({ key: "bookings", label: "Bookings", onClick: onBookings });
@@ -630,6 +637,30 @@ function SetPaymentModal({ row, token, onClose, onSaved }) {
             {saving ? "Saving…" : "Save"}
           </button>
           <button type="button" onClick={onClose} className={control.btnGhost} style={{ borderColor: theme.borderColor, color: theme.textColor }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Link, downloadable QR and social share buttons for a live experience's
+ *  public page (/experiences/{id}). */
+function ShareModal({ row, onClose }) {
+  const { theme } = adminConfig;
+  const { text, control } = adminUi;
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+      <div role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-lg border p-4" style={{ backgroundColor: theme.cardBackground, borderColor: theme.borderColor }}>
+        <h2 className={`${text.subheader} mb-3`}>Share — {row.title}</h2>
+        <FormShare
+          slug={`experience-${row.id}`}
+          path={`/experiences/${row.id}`}
+          shareText={formConfig.share.experienceShareText(row.title)}
+          compact
+        />
+        <div className="flex justify-end mt-3">
+          <button type="button" onClick={onClose} className={control.btnGhost} style={{ borderColor: theme.borderColor, color: theme.textColor }}>Close</button>
         </div>
       </div>
     </div>

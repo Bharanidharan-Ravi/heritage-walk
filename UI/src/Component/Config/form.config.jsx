@@ -47,4 +47,31 @@ export const formConfig = {
     paymentWindowBlockedMessage:
       "The payment window couldn't load. Check your internet connection or pause your ad blocker for this site, then try again.",
   },
+
+  // Share widget (Sections/FormShare.jsx) — link, QR download, social buttons.
+  share: {
+    qrAlt: "QR code to open this form",
+    qrGeneratingMessage: "Generating QR…",
+    qrErrorMessage: "Could not generate the QR code.",
+    copyLinkLabel: "Copy Link",
+    copiedLabel: "Copied!",
+    downloadQrLabel: "Download QR",
+    shareLabel: "Share",
+    socialHeading: "Share on",
+    // Text that goes with the link in social posts / messages.
+    shareText: (title) => (title ? `Fill in "${title}" — ArchaeoTrails` : "Fill in this ArchaeoTrails form"),
+    experienceShareText: (title) => (title ? `Join "${title}" with ArchaeoTrails` : "Join this ArchaeoTrails experience"),
+    qrFileName: (name) => `${name}-qr.png`,
+    // `{url}` / `{text}` are replaced with URL-encoded values. Instagram has no
+    // web share URL — it's reached through the native "Share" button on phones
+    // (which also attaches the QR image) or by posting the downloaded QR.
+    networks: [
+      { key: "whatsapp", label: "WhatsApp", color: "#25D366", href: "https://wa.me/?text={text}%20{url}" },
+      { key: "facebook", label: "Facebook", color: "#1877F2", href: "https://www.facebook.com/sharer/sharer.php?u={url}" },
+      { key: "x", label: "X", color: "#E7E7E7", href: "https://twitter.com/intent/tweet?text={text}&url={url}" },
+      { key: "telegram", label: "Telegram", color: "#26A5E4", href: "https://t.me/share/url?url={url}&text={text}" },
+      { key: "linkedin", label: "LinkedIn", color: "#0A66C2", href: "https://www.linkedin.com/sharing/share-offsite/?url={url}" },
+      { key: "email", label: "Email", color: "#C19D60", href: "mailto:?subject={text}&body={text}%0A%0A{url}" },
+    ],
+  },
 };
