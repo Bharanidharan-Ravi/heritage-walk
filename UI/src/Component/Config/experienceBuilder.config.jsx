@@ -39,7 +39,10 @@ export const experienceBuilderConfig = {
     previewCloseLabel: "Close preview",
     paletteSearchPlaceholder: "Search blocks…",
     saveDraftLabel: "Save draft",
+    // Same button once the experience is past Draft (e.g. editing a live walk).
+    saveChangesLabel: "Save changes",
     savingLabel: "Saving…",
+    savedNotice: "Saved — page, registration form and cart are up to date.",
     submitLabel: "Submit for approval",
     submittingLabel: "Submitting…",
     cancelLabel: "Cancel",

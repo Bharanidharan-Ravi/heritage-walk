@@ -462,9 +462,19 @@ namespace ArchaeoTrails.Api.Controllers
             {
                 experience.PrivatePrice = null;
             }
+            // Keep places already booked when capacity is saved again — the
+            // builder re-sends the cart on every save, including on a live
+            // experience, so re-seeding Remaining to Total here would forget
+            // existing bookings and let it oversell. Booked = old Total - old
+            // Remaining; an experience that was unlimited has no counter, so
+            // it starts from zero booked (as before).
+            var alreadyBooked = experience.CapacityTotal.HasValue && experience.CapacityRemaining.HasValue
+                ? Math.Max(0, experience.CapacityTotal.Value - experience.CapacityRemaining.Value)
+                : 0;
             experience.CapacityTotal = request.CapacityTotal;
-            // Re-seed the atomic counter whenever capacity is (re)configured.
-            experience.CapacityRemaining = request.CapacityTotal;
+            experience.CapacityRemaining = request.CapacityTotal.HasValue
+                ? Math.Max(0, request.CapacityTotal.Value - alreadyBooked)
+                : null;
             experience.LinkedFormTemplateId = request.LinkedFormTemplateId;
             experience.RegistrationType = registrationType;
             // A list for an option that isn't offered is cleared here rather than

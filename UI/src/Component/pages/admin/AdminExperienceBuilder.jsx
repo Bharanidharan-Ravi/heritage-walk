@@ -67,6 +67,7 @@ export default function AdminExperienceBuilder() {
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [savedNotice, setSavedNotice] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const [experienceId, setExperienceId] = useState(params.id || null);
 
@@ -166,23 +167,96 @@ export default function AdminExperienceBuilder() {
   const groupAmount = offersGroup ? Number(price) || 0 : Number(privatePrice) || 0;
   const privateAmount = offersPrivate ? Number(privatePrice) || null : null;
 
-  const handleSaveDraft = async () => {
+  // Every save button (Save draft / Save changes, Submit, Save cart settings)
+  // saves EVERYTHING the builder holds: page content + dates (draft
+  // endpoint), the registration form, then payment/registration/slots
+  // (PUT .../payment). They used to be split — the header button saved only
+  // the page, so registration-form and cart edits made on a live walk were
+  // silently dropped unless "Save cart settings" was clicked as well.
+  // Start/End/Booking-end date live in the cart panel but go through the
+  // DRAFT endpoint, which is why both are always hit. `linkedFormTemplateId`
+  // is the registration form built on the second screen — created on first
+  // save, updated in place after. Returns the experience id; throws an Error
+  // with a user-facing message (validation or API) for the caller to show.
+  const persistAll = async () => {
     if (builder.validationErrors.length > 0) {
       setShowErrors(true);
-      return;
+      throw new Error("Give the experience a title and at least one block first.");
     }
+    // "Give the form a title." is ignored here — the registration form never
+    // shows its own title field, it always inherits the experience's title
+    // (see the payload below), so that one warning would never clear itself.
+    const formErrors = regForm.fields.length > 0
+      ? regForm.validationErrors.filter((e) => e !== "Give the form a title.")
+      : [];
+    if (formErrors.length > 0) {
+      throw new Error(`Registration form: ${formErrors[0]}`);
+    }
+
+    let id = experienceId;
+    if (id) {
+      await adminApi.updateExperience(token, id, saveRequest());
+    } else {
+      const result = await adminApi.createExperience(token, { type: experienceType, ...saveRequest() });
+      id = result.id;
+      setExperienceId(id);
+      navigate(`/admin/experiences/${id}/edit`, { replace: true });
+    }
+
+    // Registration fields are edited right here, but they're still saved as
+    // a FormTemplate under the hood (see the module header comment) so the
+    // existing Form Generator submission/payment pipeline (FormsController)
+    // needs no changes — only its price/currency are pulled from THIS
+    // cart's own settings so there's a single payment config, not two.
+    let formId = linkedFormTemplateId;
+    if (regForm.fields.length > 0) {
+      // A linked form takes its payment settings from the experience (see
+      // FormsController.GetForm), so an Employee — who can't set a price —
+      // saves it as free rather than tripping the form's "paid needs a
+      // price" check.
+      const formPaid = isAdmin && requiresPayment;
+      const formPayload = {
+        ...regForm.toCreateRequest(),
+        title: `${builder.title.trim() || typeLabel} — Registration`,
+        requiresPayment: formPaid,
+        price: formPaid ? groupAmount : 0,
+        currency,
+      };
+      if (formId) {
+        await adminApi.updateForm(token, formId, formPayload);
+      } else {
+        const createdForm = await adminApi.createForm(token, formPayload);
+        formId = createdForm.id;
+        setLinkedFormTemplateId(formId);
+      }
+    }
+
+    // The API keeps already-booked places when capacity is re-sent, so this
+    // is safe to repeat on every save of a live experience.
+    await adminApi.setExperiencePayment(token, id, {
+      requiresPayment,
+      price: requiresPayment ? groupAmount : 0,
+      privatePrice: requiresPayment ? privateAmount : null,
+      currency,
+      capacityTotal: capacityTotal === "" ? null : Number(capacityTotal),
+      linkedFormTemplateId: formId,
+      registrationType,
+      slots: [],
+      privateSlots: registrationType === "Group" ? [] : privateSlots,
+      privateMinPeople: Math.max(1, Number(privateMinPeople) || 1),
+    });
+    invalidateAfterSave(id);
+    return id;
+  };
+
+  const handleSaveDraft = async () => {
     setSaving(true);
     setSaveError("");
+    setSavedNotice(false);
     try {
-      if (experienceId) {
-        await adminApi.updateExperience(token, experienceId, saveRequest());
-        invalidateAfterSave(experienceId);
-      } else {
-        const result = await adminApi.createExperience(token, { type: experienceType, ...saveRequest() });
-        setExperienceId(result.id);
-        invalidateAfterSave(result.id);
-        navigate(`/admin/experiences/${result.id}/edit`, { replace: true });
-      }
+      await persistAll();
+      setSavedNotice(true);
+      setTimeout(() => setSavedNotice(false), 4000);
     } catch (err) {
       setSaveError(err.message || "Could not save the experience.");
     } finally {
@@ -191,21 +265,10 @@ export default function AdminExperienceBuilder() {
   };
 
   const handleSubmit = async () => {
-    if (builder.validationErrors.length > 0) {
-      setShowErrors(true);
-      return;
-    }
     setSubmitting(true);
     setSaveError("");
     try {
-      let id = experienceId;
-      if (id) {
-        await adminApi.updateExperience(token, id, saveRequest());
-      } else {
-        const result = await adminApi.createExperience(token, { type: experienceType, ...saveRequest() });
-        id = result.id;
-        setExperienceId(id);
-      }
+      const id = await persistAll();
       await adminApi.submitExperience(token, id);
       invalidateAfterSave(id);
       navigate("/admin/experiences");
@@ -216,87 +279,11 @@ export default function AdminExperienceBuilder() {
     }
   };
 
-  // Admin-only. The Cart & payment panel also carries Start/End/Booking-end
-  // date now (moved out of the canvas — they only mean anything in relation
-  // to Registration type, which lives here too) — but those three are still
-  // saved through the DRAFT endpoint (Create/Update), not PUT .../payment,
-  // so "Save cart settings" has to hit both: (re)save the draft with the
-  // builder's current state first (creating it if it has no id yet — same
-  // request Save Draft itself sends, so the Admin never has to leave this
-  // panel to save one first), then save payment/registration/slots.
-  // `linkedFormTemplateId` is the registration form built on the second
-  // screen below — created here on first save, updated in place after.
   const handleSaveCart = async () => {
-    if (builder.validationErrors.length > 0) {
-      setShowErrors(true);
-      setCartError("Give the experience a title and at least one block first.");
-      return;
-    }
-    // "Give the form a title." is ignored here — the registration form never
-    // shows its own title field, it always inherits the experience's title
-    // (see the payload below), so that one warning would never clear itself.
-    const formErrors = regForm.fields.length > 0
-      ? regForm.validationErrors.filter((e) => e !== "Give the form a title.")
-      : [];
-    if (formErrors.length > 0) {
-      setCartError(formErrors[0]);
-      return;
-    }
-
     setCartSaving(true);
     setCartError("");
     try {
-      let id = experienceId;
-      if (id) {
-        await adminApi.updateExperience(token, id, saveRequest());
-      } else {
-        const result = await adminApi.createExperience(token, { type: experienceType, ...saveRequest() });
-        id = result.id;
-        setExperienceId(id);
-        navigate(`/admin/experiences/${id}/edit`, { replace: true });
-      }
-
-      // Registration fields are edited right here, but they're still saved as
-      // a FormTemplate under the hood (see the module header comment) so the
-      // existing Form Generator submission/payment pipeline (FormsController)
-      // needs no changes — only its price/currency are pulled from THIS
-      // cart's own settings so there's a single payment config, not two.
-      let formId = linkedFormTemplateId;
-      if (regForm.fields.length > 0) {
-        // A linked form takes its payment settings from the experience (see
-        // FormsController.GetForm), so an Employee — who can't set a price —
-        // saves it as free rather than tripping the form's "paid needs a
-        // price" check.
-        const formPaid = isAdmin && requiresPayment;
-        const formPayload = {
-          ...regForm.toCreateRequest(),
-          title: `${builder.title.trim() || typeLabel} — Registration`,
-          requiresPayment: formPaid,
-          price: formPaid ? groupAmount : 0,
-          currency,
-        };
-        if (formId) {
-          await adminApi.updateForm(token, formId, formPayload);
-        } else {
-          const createdForm = await adminApi.createForm(token, formPayload);
-          formId = createdForm.id;
-          setLinkedFormTemplateId(formId);
-        }
-      }
-
-      await adminApi.setExperiencePayment(token, id, {
-        requiresPayment,
-        price: requiresPayment ? groupAmount : 0,
-        privatePrice: requiresPayment ? privateAmount : null,
-        currency,
-        capacityTotal: capacityTotal === "" ? null : Number(capacityTotal),
-        linkedFormTemplateId: formId,
-        registrationType,
-        slots: [],
-        privateSlots: registrationType === "Group" ? [] : privateSlots,
-        privateMinPeople: Math.max(1, Number(privateMinPeople) || 1),
-      });
-      invalidateAfterSave(id);
+      await persistAll();
     } catch (err) {
       setCartError(err.message || "Could not save the cart settings.");
     } finally {
@@ -335,7 +322,7 @@ export default function AdminExperienceBuilder() {
               {content.previewTitle}
             </button>
             <button type="button" onClick={handleSaveDraft} disabled={saving || submitting} className={adminUi.control.btnGhost} style={{ borderColor: theme.borderColor, color: theme.textColor }}>
-              {saving ? content.savingLabel : content.saveDraftLabel}
+              {saving ? content.savingLabel : canSubmit ? content.saveDraftLabel : content.saveChangesLabel}
             </button>
             {canSubmit && (
               <button type="button" onClick={handleSubmit} disabled={saving || submitting} className={adminUi.control.btnPrimary} style={{ backgroundColor: theme.accentColor, color: theme.pageBackground }}>
@@ -351,6 +338,7 @@ export default function AdminExperienceBuilder() {
           </ul>
         )}
         {saveError && <p className={`mb-3 ${adminUi.text.body}`} style={{ color: theme.dangerColor }}>{saveError}</p>}
+        {savedNotice && !saveError && <p className={`mb-3 ${adminUi.text.body}`} style={{ color: theme.successColor || theme.accentColor }}>{content.savedNotice}</p>}
 
         <div className="flex gap-1.5 mb-3">
           {[["page", "1 · Page"], ["register", "2 · Registration form"]].map(([key, label]) => (
@@ -472,7 +460,7 @@ export default function AdminExperienceBuilder() {
           scroll), so it scrolls into view with the rest of the page. */}
         <div className={`${step === "register" ? "" : "hidden"} flex-1 min-h-0 flex flex-col`}>
           <p className={`${adminUi.text.body} mb-2 shrink-0`} style={{ color: theme.mutedColor }}>
-            Registration form — drag in the fields visitors fill out. Saved with “Save cart settings” on the Page screen.
+            Registration form — drag in the fields visitors fill out. Saved together with the page by any save button.
           </p>
           {pageContent.attendeeNames.forRegistrationTypes.some((t) => registrationType === t || registrationType === "Both") && (
             <p className={`${adminUi.text.body} mb-2 shrink-0`} style={{ color: theme.mutedColor }}>
