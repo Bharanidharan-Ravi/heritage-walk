@@ -13,6 +13,22 @@ namespace ArchaeoTrails.Application.Services
     /// </summary>
     public static class BookingRules
     {
+        // India has no DST, so a fixed offset is exact and avoids depending on
+        // OS time-zone ids ("India Standard Time" vs "Asia/Kolkata").
+        private static readonly TimeSpan IstOffset = TimeSpan.FromHours(5.5);
+
+        /// <summary>
+        /// Whether bookings are still open. BookingEndDate is a date-only value
+        /// (stored as midnight) and is inclusive: a booking end date of 20 Nov
+        /// accepts bookings all through 20 Nov (India time) and closes on 21 Nov.
+        /// </summary>
+        public static bool IsBookingOpen(DateTime? bookingEndDate, DateTime utcNow)
+        {
+            if (bookingEndDate is null) return true;
+            var todayIst = (utcNow + IstOffset).Date;
+            return bookingEndDate.Value.Date >= todayIst;
+        }
+
         /// <summary>
         /// The experience's Private dates minus the ones already taken — a date
         /// can be booked once. Duplicate dates (e.g. a morning and an evening

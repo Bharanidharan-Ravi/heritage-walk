@@ -228,7 +228,7 @@ namespace ArchaeoTrails.Api.Controllers
             }
 
             var bookingEnabled = linkedFormSlug is not null &&
-                (experience.BookingEndDate is null || experience.BookingEndDate > DateTime.UtcNow) &&
+                BookingRules.IsBookingOpen(experience.BookingEndDate, DateTime.UtcNow) &&
                 (experience.CapacityRemaining is null || experience.CapacityRemaining > 0) &&
                 // A Private-only experience with every date taken is closed.
                 !(experience.RegistrationType == RegistrationType.Private && privateSlots.Count == 0);
@@ -763,7 +763,7 @@ namespace ArchaeoTrails.Api.Controllers
                 : 0;
 
             var bookingEnabled = e.LinkedFormTemplateId.HasValue &&
-                (e.BookingEndDate == null || e.BookingEndDate > DateTime.UtcNow);
+                BookingRules.IsBookingOpen(e.BookingEndDate, DateTime.UtcNow);
 
             return new ExperienceListItemDto
             {

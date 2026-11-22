@@ -106,7 +106,7 @@ namespace ArchaeoTrails.Application.Services
             {
                 return Fail(BookingError.Invalid, "This experience is free — submit the registration form directly.");
             }
-            if (experience.BookingEndDate is not null && experience.BookingEndDate <= now)
+            if (!BookingRules.IsBookingOpen(experience.BookingEndDate, now))
             {
                 return Fail(BookingError.Unavailable, "Bookings for this experience have closed.");
             }
