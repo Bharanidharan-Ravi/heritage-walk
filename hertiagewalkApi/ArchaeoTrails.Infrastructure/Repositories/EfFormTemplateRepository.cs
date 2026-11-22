@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using ArchaeoTrails.Application.Interfaces;
+using ArchaeoTrails.Application.Services;
 using ArchaeoTrails.Domain.Entities;
 using ArchaeoTrails.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -12,10 +13,12 @@ namespace ArchaeoTrails.Infrastructure.Repositories
     public class EfFormTemplateRepository : IFormTemplateRepository
     {
         private readonly AppDbContext _db;
+        private readonly PublicSnapshotSignal _snapshotSignal;
 
-        public EfFormTemplateRepository(AppDbContext db)
+        public EfFormTemplateRepository(AppDbContext db, PublicSnapshotSignal snapshotSignal)
         {
             _db = db;
+            _snapshotSignal = snapshotSignal;
         }
 
         public Task<FormTemplate?> GetBySlugAsync(string slug) =>
@@ -38,6 +41,8 @@ namespace ArchaeoTrails.Infrastructure.Repositories
         {
             _db.FormTemplates.Update(template);
             await _db.SaveChangesAsync();
+            // Field edits / activation change what the public form shows.
+            _snapshotSignal.MarkDirty();
         }
     }
 }

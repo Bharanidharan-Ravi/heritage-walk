@@ -12,9 +12,13 @@ namespace ArchaeoTrails.Api.Background
     /// webhook), otherwise marked Expired. Without this, an abandoned checkout
     /// stays PendingPayment in the database forever.
     ///
-    /// Sweeps once at startup (holds left from before a restart), then only
-    /// while BookingHoldTracker says a recent hold can be stale — otherwise it
-    /// leaves the database alone so Azure SQL serverless can auto-pause.
+    /// Sweeps only while BookingHoldTracker says a recent hold can be stale —
+    /// otherwise it leaves the database alone so Azure SQL serverless can
+    /// auto-pause. There is deliberately no sweep at startup (it would wake SQL
+    /// on every App Service restart): holds left from before a restart no
+    /// longer block seats once ExpiresAt passes (BookingService only counts
+    /// unexpired holds), and each sweep settles ALL stale holds, so they're
+    /// tidied up by the sweep after the next booking.
     /// </summary>
     public class BookingExpiryWorker : BackgroundService
     {
@@ -37,11 +41,9 @@ namespace ArchaeoTrails.Api.Background
             // A few sweeps past the last stale point, for gateway hiccups.
             var slack = interval * 3;
             using var timer = new PeriodicTimer(interval);
-            var startup = true;
-            do
+            while (await timer.WaitForNextTickAsync(stoppingToken))
             {
-                if (!startup && !_holdTracker.IsSweepDue(DateTime.UtcNow, slack)) continue;
-                startup = false;
+                if (!_holdTracker.IsSweepDue(DateTime.UtcNow, slack)) continue;
                 try
                 {
                     // BookingService and its DbContext are scoped — a fresh scope per sweep.
@@ -59,7 +61,6 @@ namespace ArchaeoTrails.Api.Background
                     _logger.LogError(ex, "Booking expiry sweep failed");
                 }
             }
-            while (await timer.WaitForNextTickAsync(stoppingToken));
         }
     }
 }

@@ -19,8 +19,20 @@ jobs:
         with:
           dotnet-version: '8.x'
 
+      # The Category=Sql tests need SQL Server LocalDB (a throwaway database —
+      # never Azure SQL). Run them when the runner has it; otherwise run the rest
+      # rather than block the deploy.
       - name: Run tests
-        run: dotnet test hertiagewalkApi/ArchaeoTrails.Application.Tests --configuration Release
+        shell: pwsh
+        run: |
+          if (Get-Command sqllocaldb -ErrorAction SilentlyContinue) {
+            sqllocaldb start MSSQLLocalDB
+            dotnet test hertiagewalkApi/ArchaeoTrails.Application.Tests --configuration Release
+          } else {
+            Write-Host "::warning::SQL Server LocalDB not on this runner - skipping Category=Sql tests"
+            dotnet test hertiagewalkApi/ArchaeoTrails.Application.Tests --configuration Release --filter "Category!=Sql"
+          }
+          exit $LASTEXITCODE
 
       - name: dotnet publish
         run: dotnet publish hertiagewalkApi/ArchaeoTrails.Api/ArchaeoTrails.Api.csproj -c Release -o "${{env.DOTNET_ROOT}}/myapp"

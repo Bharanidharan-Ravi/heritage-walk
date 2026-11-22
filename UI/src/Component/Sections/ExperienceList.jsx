@@ -4,15 +4,14 @@
 // each linking to its ExperienceDetail.jsx page. Separate from the existing
 // Walk.jsx (which lists the older, Sanity-only "walk" documents) — this one
 // lists experiences built with the new Experience Builder
-// (AdminExperienceBuilder.jsx) via the public /api/experiences/public API.
+// (AdminExperienceBuilder.jsx), read from the public snapshot in Sanity with
+// the /api/experiences/public API as fallback (see src/publicSnapshot.js).
 
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { experiencePublicConfig } from "../Config/experiencePublic.config";
 import { EXPERIENCE_TYPES } from "../Config/experienceBuilder.config";
-import { SITE_ENV_HEADERS } from "../../testMode";
-
-const API_BASE = import.meta.env.VITE_API_URL;
+import { fetchPublicExperiences } from "../../publicSnapshot";
 
 export default function ExperienceList() {
   const { theme, content } = experiencePublicConfig;
@@ -27,11 +26,9 @@ export default function ExperienceList() {
     async function load() {
       setStatus("loading");
       try {
-        const res = await fetch(`${API_BASE}/api/experiences/public?pageSize=100`, { headers: SITE_ENV_HEADERS });
+        const experiences = await fetchPublicExperiences();
         if (cancelled) return;
-        if (!res.ok) { setStatus("error"); return; }
-        const data = await res.json();
-        setItems(data.items || []);
+        setItems(experiences);
         setStatus("ready");
       } catch {
         if (!cancelled) setStatus("error");

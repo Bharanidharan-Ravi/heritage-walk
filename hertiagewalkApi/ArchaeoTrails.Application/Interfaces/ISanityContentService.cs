@@ -77,5 +77,13 @@ namespace ArchaeoTrails.Application.Interfaces
         /// Sanity:ProjectId/Dataset are accepted.
         /// </summary>
         Task<SanityAssetDeleteResult> DeleteImageAssetAsync(string assetUrl);
+
+        /// <summary>
+        /// Replaces the public-site snapshot document (one per site: live /
+        /// test) with <paramref name="snapshotJson"/>, stored as a string so
+        /// Sanity never needs a schema or array _keys for it. The site reads it
+        /// from Sanity's CDN instead of calling the API — see PublicSnapshotWorker.
+        /// </summary>
+        Task<SanitySyncResult> UpsertPublicSnapshotAsync(bool isTest, string snapshotJson);
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using ArchaeoTrails.Application.Interfaces;
+using ArchaeoTrails.Application.Services;
 using ArchaeoTrails.Domain.Entities;
 using ArchaeoTrails.Domain.Enums;
 using ArchaeoTrails.Infrastructure.Data;
@@ -13,10 +14,12 @@ namespace ArchaeoTrails.Infrastructure.Repositories
     public class EfFormSubmissionRepository : IFormSubmissionRepository
     {
         private readonly AppDbContext _db;
+        private readonly PublicSnapshotSignal _snapshotSignal;
 
-        public EfFormSubmissionRepository(AppDbContext db)
+        public EfFormSubmissionRepository(AppDbContext db, PublicSnapshotSignal snapshotSignal)
         {
             _db = db;
+            _snapshotSignal = snapshotSignal;
         }
 
         public async Task<FormSubmission> CreateAsync(FormSubmission submission)
@@ -52,6 +55,7 @@ namespace ArchaeoTrails.Infrastructure.Repositories
                 _db.FormSubmissions.Add(submission);
                 await _db.SaveChangesAsync();
                 await transaction.CommitAsync();
+                _snapshotSignal.MarkDirty(); // a seat was taken
                 return submission;
             });
         }
@@ -119,6 +123,7 @@ namespace ArchaeoTrails.Infrastructure.Repositories
                 }
 
                 await transaction.CommitAsync();
+                _snapshotSignal.MarkDirty(); // seats and/or a private date taken
                 return true;
             });
         }

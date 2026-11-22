@@ -2,9 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom"; // <-- 1. Import useNavigate
 import { client, urlFor } from "/src/sanityClient";
 import { walkConfig } from "../Config/walk.config";
-import { SITE_ENV_HEADERS } from "../../testMode";
-
-const API_BASE = import.meta.env.VITE_API_URL;
+import { fetchPublicExperiences } from "../../publicSnapshot";
 
 // Cards come from two sources, normalized to one shape:
 //  - Sanity "walk" documents (dataset follows /test — see testMode.js)
@@ -64,9 +62,9 @@ export default function Walks() {
       return (data.walks || []).map(fromSanityWalk);
     }).catch((err) => { console.error(err); return []; });
 
-    const liveExperiences = fetch(`${API_BASE}/api/experiences/public?type=walk&pageSize=100`, { headers: SITE_ENV_HEADERS })
-      .then((res) => (res.ok ? res.json() : { items: [] }))
-      .then((data) => (data.items || []).map(fromExperience))
+    // Sanity snapshot first, API as fallback — see src/publicSnapshot.js.
+    const liveExperiences = fetchPublicExperiences({ type: "walk" })
+      .then((items) => items.map(fromExperience))
       .catch((err) => { console.error(err); return []; });
 
     Promise.all([sanityWalks, liveExperiences]).then(([a, b]) => {

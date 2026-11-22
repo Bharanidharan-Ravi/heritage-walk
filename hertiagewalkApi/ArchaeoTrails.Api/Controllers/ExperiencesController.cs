@@ -41,6 +41,7 @@ namespace ArchaeoTrails.Api.Controllers
         private readonly IExperienceEventPublisher _events;
         private readonly IFormSubmissionRepository _formSubmissions;
         private readonly PublicExperienceListCache _publicListCache;
+        private readonly PublicSnapshotSignal _snapshotSignal;
 
         public ExperiencesController(
             IExperienceTemplateRepository experiences,
@@ -49,10 +50,12 @@ namespace ArchaeoTrails.Api.Controllers
             ISanityContentService sanity,
             IExperienceEventPublisher events,
             IFormSubmissionRepository formSubmissions,
-            PublicExperienceListCache publicListCache)
+            PublicExperienceListCache publicListCache,
+            PublicSnapshotSignal snapshotSignal)
         {
             _formSubmissions = formSubmissions;
             _publicListCache = publicListCache;
+            _snapshotSignal = snapshotSignal;
             _experiences = experiences;
             _formTemplates = formTemplates;
             _authService = authService;
@@ -255,6 +258,18 @@ namespace ArchaeoTrails.Api.Controllers
                 EndDate = experience.EndDate,
                 BookingEndDate = experience.BookingEndDate
             });
+        }
+
+        // POST /api/experiences/public-snapshot/rebuild  (Admin only)
+        // Rewrites the public-site snapshot in Sanity (see PublicSnapshotWorker).
+        // It rebuilds itself after every relevant write; this is for the first
+        // build after deploying, or after fixing the Sanity token.
+        [HttpPost("public-snapshot/rebuild")]
+        [Authorize(Roles = Roles.Admin)]
+        public IActionResult RebuildPublicSnapshot()
+        {
+            _snapshotSignal.MarkDirty();
+            return Accepted(new { status = "success", message = "Public snapshot rebuild queued — it reaches Sanity within a few seconds." });
         }
 
         // GET /api/experiences/{id}

@@ -28,7 +28,7 @@ import { experiencePublicConfig } from "../Config/experiencePublic.config";
 import FormRenderer from "./FormRenderer";
 import { BookingCard, Breadcrumb, RegistrationSteps, Surface, TypeBadge } from "./ExperiencePageView";
 import { unitPriceFor, withAttendeeNameFields } from "./experienceBlockHelpers";
-import { SITE_ENV_HEADERS } from "../../testMode";
+import { fetchPublicExperience, fetchPublicForm } from "../../publicSnapshot";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 const FORM_ID = "registration-form";
@@ -82,18 +82,19 @@ export default function FormPage() {
     window.scrollTo(0, 0);
     async function loadForm() {
       try {
-        const res = await fetch(`${API_BASE}/api/forms/${slug}`);
-        if (!res.ok) {
+        // Sanity snapshot first, API as fallback — see src/publicSnapshot.js.
+        // Only pressing Pay / Submit reaches the API (and Azure SQL).
+        const data = await fetchPublicForm(slug);
+        if (!data) {
           setStatus("error");
           setErrorMessage(content.notFoundMessage);
           return;
         }
-        const data = await res.json();
         setForm(data);
 
         if (data.experienceId) {
-          const expRes = await fetch(`${API_BASE}/api/experiences/public/${data.experienceId}`, { headers: SITE_ENV_HEADERS }).catch(() => null);
-          if (expRes?.ok) setExperience(await expRes.json());
+          const exp = await fetchPublicExperience(data.experienceId).catch(() => null);
+          if (exp) setExperience(exp);
         }
 
         // Carried over from the experience detail page's cart widget

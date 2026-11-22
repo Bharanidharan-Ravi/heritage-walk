@@ -124,6 +124,11 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddScoped<IExperienceTemplateRepository, EfExperienceTemplateRepository>();
 // Keeps home-page visitors off Azure SQL so serverless can auto-pause.
 builder.Services.AddSingleton<PublicExperienceListCache>();
+// Public-site snapshot in Sanity: the site reads walks/seminars/forms from
+// Sanity's CDN, so browsing never wakes Azure SQL — see PublicSnapshotWorker.
+builder.Services.AddSingleton<PublicSnapshotSignal>();
+builder.Services.AddScoped<IPublicSnapshotBuilder, PublicSnapshotBuilder>();
+builder.Services.AddHostedService<PublicSnapshotWorker>();
 // Typed HttpClient (not plain AddScoped) — SanityContentService.UploadImageAssetAsync
 // makes real outbound calls to Sanity's asset API once Sanity:WriteToken is set.
 builder.Services.AddHttpClient<ISanityContentService, SanityContentService>();
@@ -286,8 +291,12 @@ app.MapHub<ExperienceHub>("/hubs/experience");
 
 // Seed Admin/Employee/User roles, and an initial Admin account if SeedAdmin
 // config is set — see IdentitySeeder for why this is safe to no-op otherwise.
-using (var scope = app.Services.CreateScope())
+// Production only seeds when Identity:SeedOnStartup=true (set it for a first
+// deploy onto an empty database, then remove it): every seed queries SQL, and
+// App Service restarts would otherwise wake a paused Azure SQL serverless DB.
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Identity:SeedOnStartup"))
 {
+    using var scope = app.Services.CreateScope();
     await IdentitySeeder.SeedAsync(scope.ServiceProvider);
 }
 

@@ -15,11 +15,13 @@ namespace ArchaeoTrails.Infrastructure.Repositories
     {
         private readonly AppDbContext _db;
         private readonly PublicExperienceListCache _publicListCache;
+        private readonly PublicSnapshotSignal _snapshotSignal;
 
-        public EfExperienceTemplateRepository(AppDbContext db, PublicExperienceListCache publicListCache)
+        public EfExperienceTemplateRepository(AppDbContext db, PublicExperienceListCache publicListCache, PublicSnapshotSignal snapshotSignal)
         {
             _db = db;
             _publicListCache = publicListCache;
+            _snapshotSignal = snapshotSignal;
         }
 
         public Task<ExperienceTemplate?> GetByIdAsync(Guid id) =>
@@ -33,6 +35,7 @@ namespace ArchaeoTrails.Infrastructure.Repositories
             _db.ExperienceTemplates.Add(experience);
             await _db.SaveChangesAsync();
             _publicListCache.Invalidate();
+            _snapshotSignal.MarkDirty();
             return experience;
         }
 
@@ -42,6 +45,7 @@ namespace ArchaeoTrails.Infrastructure.Repositories
             _db.ExperienceTemplates.Update(experience);
             await _db.SaveChangesAsync();
             _publicListCache.Invalidate();
+            _snapshotSignal.MarkDirty();
         }
 
         public async Task<IReadOnlySet<Guid>> GetLinkedFormTemplateIdsAsync()

@@ -12,9 +12,8 @@ import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { experiencePublicConfig } from "../Config/experiencePublic.config";
 import ExperiencePageView from "./ExperiencePageView";
-import { SITE_ENV_HEADERS } from "../../testMode";
-
-const API_BASE = import.meta.env.VITE_API_URL;
+// Sanity snapshot first, API as fallback — see src/publicSnapshot.js.
+import { fetchPublicExperience } from "../../publicSnapshot";
 
 export default function ExperienceDetail() {
   const { id } = useParams();
@@ -30,17 +29,13 @@ export default function ExperienceDetail() {
     async function load() {
       setStatus("loading");
       try {
-        const res = await fetch(`${API_BASE}/api/experiences/public/${id}`, { headers: SITE_ENV_HEADERS });
+        const found = await fetchPublicExperience(id);
         if (cancelled) return;
-        if (res.status === 404) {
+        if (!found) {
           setStatus("notfound");
           return;
         }
-        if (!res.ok) {
-          setStatus("error");
-          return;
-        }
-        setExperience(await res.json());
+        setExperience(found);
         setStatus("ready");
       } catch {
         if (!cancelled) setStatus("error");

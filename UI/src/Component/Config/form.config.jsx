@@ -20,7 +20,10 @@ export const formConfig = {
     // Paid forms (requiresPayment === true)
     paidNotice: (amount, currency) => `${currency} ${amount} — payment required to submit.`,
     payButtonLabel: (amount, currency) => `Pay ${currency} ${amount} & Submit`,
-    payingMessage: "Processing payment...",
+    // Pressing Pay is the first API call of a visit (pages load from Sanity),
+    // so it may wait for the paused database to wake — say so instead of
+    // looking stuck.
+    payingMessage: "Preparing your booking… this can take up to a minute.",
     successMessage: "Payment received — your form has been submitted!",
     paymentFailedMessage: "Payment could not be verified. Please try again.",
 

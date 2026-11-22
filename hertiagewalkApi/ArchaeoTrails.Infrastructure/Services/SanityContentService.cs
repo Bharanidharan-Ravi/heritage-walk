@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -145,6 +146,61 @@ namespace ArchaeoTrails.Infrastructure.Services
             catch (Exception ex)
             {
                 return SanityAssetDeleteResult.Fail($"Sanity asset delete failed: {ex.Message}");
+            }
+        }
+
+        // No "." in the ids: Sanity treats dotted ids as private (readable only
+        // with a token), and the site reads these anonymously from the CDN.
+        // Must match UI/src/publicSnapshot.js.
+        private const string LiveSnapshotId = "publicSnapshot-live";
+        private const string TestSnapshotId = "publicSnapshot-test";
+
+        public async Task<SanitySyncResult> UpsertPublicSnapshotAsync(bool isTest, string snapshotJson)
+        {
+            var (projectId, dataset, token, configError) = ReadSanityConfig();
+            if (configError is not null)
+            {
+                return SanitySyncResult.Fail(configError);
+            }
+
+            var documentId = isTest ? TestSnapshotId : LiveSnapshotId;
+            try
+            {
+                var url = $"https://{projectId}.api.sanity.io/v2021-06-07/data/mutate/{dataset}";
+                var mutation = JsonSerializer.Serialize(new
+                {
+                    mutations = new object[]
+                    {
+                        new
+                        {
+                            createOrReplace = new Dictionary<string, object>
+                            {
+                                ["_id"] = documentId,
+                                ["_type"] = "publicSnapshot",
+                                ["env"] = isTest ? "test" : "live",
+                                ["generatedAt"] = DateTime.UtcNow.ToString("O"),
+                                ["data"] = snapshotJson
+                            }
+                        }
+                    }
+                });
+
+                using var content = new StringContent(mutation, Encoding.UTF8, "application/json");
+                using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+                using var response = await _httpClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var body = await response.Content.ReadAsStringAsync();
+                    return SanitySyncResult.Fail($"Sanity snapshot write failed ({(int)response.StatusCode}): {body}");
+                }
+
+                return SanitySyncResult.Ok(documentId);
+            }
+            catch (Exception ex)
+            {
+                return SanitySyncResult.Fail($"Sanity snapshot write failed: {ex.Message}");
             }
         }
 
